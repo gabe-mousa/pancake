@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files
+.env
+.env.*
+.env.local
+
+# Internal planning docs
+plan.md
+plan-filesystem.md
+PUBLISH.md
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp

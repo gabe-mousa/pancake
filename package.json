@@ -1,5 +1,5 @@
 {
-  "name": "pancake-agents",
+  "name": "pancake",
   "version": "1.0.0",
   "description": "Run multiple Claude AI agent sessions side by side in your browser.",
   "type": "module",

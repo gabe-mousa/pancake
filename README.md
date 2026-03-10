@@ -30,7 +30,7 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 ### Getting started
 
 1. Run `npx pancake-agents`
-2. Click **⚙** in the top right and enter your Anthropic API key
+2. Click the cog in the top right and enter your Anthropic API key
 3. Press **Ctrl+Shift+N** (or click **+**) to create a session
 4. Choose a name and model, then click **Create**
 5. Type in the chat input and press **Enter** to send
@@ -46,7 +46,7 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 | Expand focused tile | `Ctrl+Shift+F` |
 | Toggle notepad window | `Ctrl+Shift+X` |
 
-All shortcuts are configurable in the **⚙** settings modal.
+All shortcuts are configurable in the settings menu in the top right.
 
 ### Broadcasting
 
@@ -58,7 +58,7 @@ The shared notepad (`Ctrl+Shift+X`) is a floating markdown editor visible to all
 
 ### Models
 
-Each session can use a different model. Currently supports Anthropic models (requires an [Anthropic API key](https://console.anthropic.com/)). Select from the dropdown when creating a session or in the ⚙ settings.
+Each session can use a different model. Currently supports Anthropic models (requires an [Anthropic API key](https://console.anthropic.com/)). Select from the dropdown when creating a session or in the settings menu.
 
 ## Local development
 
@@ -79,10 +79,6 @@ Then open `http://localhost:5173`.
 | `npm run build` | TypeScript compile + Vite bundle to `dist/` |
 | `npm run preview` | Preview the production build locally |
 | `npm start` | Build if needed, then launch the production server |
-
-## Publishing
-
-See [PUBLISH.md](PUBLISH.md) for step-by-step release instructions.
 
 ## License
 

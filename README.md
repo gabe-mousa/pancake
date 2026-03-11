@@ -5,7 +5,7 @@ Run multiple Claude AI agent sessions side by side in your browser.
 ## Quick start
 
 ```bash
-npx pancake-agents
+npx pancake
 ```
 
 Pancake builds itself on first run, opens `http://localhost:4173` in your browser, and prompts you to enter your Anthropic API key. No installation required.
@@ -29,7 +29,7 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 
 ### Getting started
 
-1. Run `npx pancake-agents`
+1. Run `npx pancake`
 2. Click the cog in the top right and enter your Anthropic API key
 3. Press **Ctrl+Shift+N** (or click **+**) to create a session
 4. Choose a name and model, then click **Create**

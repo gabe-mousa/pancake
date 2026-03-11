@@ -8,7 +8,7 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import Tile from './Tile'
-import type { Session } from '../types'
+import type { Session, FsAccess } from '../types'
 
 interface Props {
   sessions: Session[]
@@ -23,9 +23,10 @@ interface Props {
   onReorder: (sessions: Session[]) => void
   onFocusTile: (index: number) => void
   onActiveInputChange: (value: string) => void
+  onFsAccessChange: (sessionId: string, level: FsAccess) => void
 }
 
-export default function TileGrid({ sessions, streamingContents, activeTileIndex, selectedIds, activeInputValue, expandHotkey, onSendMessage, onRemove, onRename, onReorder, onFocusTile, onActiveInputChange }: Props) {
+export default function TileGrid({ sessions, streamingContents, activeTileIndex, selectedIds, activeInputValue, expandHotkey, onSendMessage, onRemove, onRename, onReorder, onFocusTile, onActiveInputChange, onFsAccessChange }: Props) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   function handleDragEnd(event: DragEndEvent) {
@@ -56,6 +57,7 @@ export default function TileGrid({ sessions, streamingContents, activeTileIndex,
               onRename={onRename}
               onFocus={() => onFocusTile(i)}
               onActiveInputChange={onActiveInputChange}
+              onFsAccessChange={onFsAccessChange}
             />
           ))}
         </div>

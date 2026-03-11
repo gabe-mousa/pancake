@@ -19,8 +19,22 @@ if (!existsSync(dist)) {
 }
 
 const port = process.env.PORT || 4173
+const fsPort = parseInt(process.env.FS_PORT || '4174', 10)
+const fsRoot = process.env.FS_ROOT || process.cwd()
+const serverScript = resolve(root, 'server', 'index.js')
 
 console.log(`\nStarting Pancake on http://localhost:${port}\n`)
+
+// Start the FS bridge server
+const fsServer = spawn(
+  'node',
+  [serverScript, '--root', fsRoot, '--port', String(fsPort)],
+  { cwd: root, stdio: 'inherit' }
+)
+
+fsServer.on('error', err => {
+  console.error(`[FS Server] failed to start: ${err.message}`)
+})
 
 // Open browser after short delay
 setTimeout(() => {
@@ -41,9 +55,16 @@ const preview = spawn(
   { cwd: root, stdio: 'inherit' }
 )
 
-preview.on('close', code => process.exit(code ?? 0))
-
-process.on('SIGINT', () => {
-  preview.kill('SIGINT')
-  process.exit(0)
+preview.on('close', code => {
+  fsServer.kill()
+  process.exit(code ?? 0)
 })
+
+function shutdown() {
+  preview.kill('SIGINT')
+  fsServer.kill('SIGINT')
+  process.exit(0)
+}
+
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)

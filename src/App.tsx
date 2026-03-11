@@ -5,8 +5,9 @@ import NewSessionModal from './components/NewSessionModal'
 import HowToPage from './components/HowToPage'
 import NotepadWindow from './components/NotepadWindow'
 import NotepadPage from './components/NotepadPage'
+import FilesystemPage from './pages/FilesystemPage'
 import { streamMessage } from './anthropic'
-import type { Session, Config } from './types'
+import type { Session, Config, FsAccess, VirtualFile } from './types'
 
 const DEFAULT_CONFIG: Config = {
   apiKey: '',
@@ -58,19 +59,78 @@ function eventMatchesHotkey(e: KeyboardEvent, combo: string): boolean {
   )
 }
 
-let nextId = 1
-function newSession(model: string, name: string): Session {
+function createSession(model: string, name: string, displayNumber: number, fsAccess: FsAccess, pancakeEnabled: boolean, localEnabled: boolean): Session {
   return {
-    id: String(nextId++),
-    name: name || `Session ${nextId - 1}`,
+    id: crypto.randomUUID(),
+    name: name || `Session ${displayNumber}`,
     model,
     messages: [],
     status: 'Idle',
     isStreaming: false,
+    fsAccess,
+    pancakeEnabled,
+    localEnabled,
   }
 }
 
-type Page = 'sessions' | 'how-to' | 'notepad'
+type Page = 'sessions' | 'how-to' | 'notepad' | 'filesystem'
+
+const FS_LEVELS: FsAccess[] = ['none', 'read', 'read-write', 'read-write-delete']
+const FS_LABELS: Record<FsAccess, string> = {
+  'none': 'FS: off',
+  'read': 'FS: read',
+  'read-write': 'FS: r/w',
+  'read-write-delete': 'FS: r/w/d',
+}
+
+function DefaultFsSelector({ value, onChange }: { value: FsAccess; onChange: (v: FsAccess) => void }) {
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    function close() { setOpen(false) }
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [open])
+
+  return (
+    <div className="default-fs-selector" onClick={e => e.stopPropagation()}>
+      <button
+        className={`fs-badge fs-badge-${value} default-fs-btn`}
+        onClick={() => setOpen(prev => !prev)}
+        title="Default local filesystem access level for new sessions"
+      >
+        LFS default: {FS_LABELS[value].replace('FS: ', '')}
+      </button>
+      {open && (
+        <div className="fs-menu default-fs-menu">
+          <div className="fs-menu-label">Default LFS access for new sessions</div>
+          {FS_LEVELS.map(level => (
+            <button
+              key={level}
+              className={`fs-menu-item${level === value ? ' fs-menu-item-active' : ''}`}
+              onClick={() => { onChange(level); setOpen(false) }}
+            >
+              {FS_LABELS[level]}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Poll the FS server on startup to get the current root
+async function fetchFsRoot(): Promise<string> {
+  try {
+    const res = await fetch('http://127.0.0.1:4174/health')
+    if (res.ok) {
+      const data = await res.json()
+      return data.root ?? ''
+    }
+  } catch {}
+  return ''
+}
 
 export default function App() {
   const [config, setConfig] = useState<Config>(loadConfig)
@@ -85,6 +145,13 @@ export default function App() {
   const [notepadContent, setNotepadContent] = useState('')
   const [showNotepadWindow, setShowNotepadWindow] = useState(false)
   const [notepadPos, setNotepadPos] = useState({ x: 80, y: 80 })
+  const [virtualFsFiles, setVirtualFsFiles] = useState<VirtualFile[]>([])
+  const [fsRoot, setFsRoot] = useState<string>('')
+  const [virtualDeleteConfirm, setVirtualDeleteConfirm] = useState<{ name: string; resolve: (ok: boolean) => void } | null>(null)
+  const [defaultFsAccess, setDefaultFsAccess] = useState<FsAccess>(() => (localStorage.getItem('pancake_default_fs_access') as FsAccess) || 'none')
+  const [pancakeEnabled, setPancakeEnabled] = useState(() => localStorage.getItem('pancake_virtual_fs_enabled') === 'true')
+  const [localEnabled, setLocalEnabled] = useState(() => localStorage.getItem('pancake_fs_local_enabled') === 'true')
+
   const sessionsRef = useRef(sessions)
   sessionsRef.current = sessions
   const activeTileIndexRef = useRef(activeTileIndex)
@@ -93,14 +160,58 @@ export default function App() {
   configRef.current = config
   const notepadRef = useRef(notepadContent)
   notepadRef.current = notepadContent
+  const virtualFsFilesRef = useRef(virtualFsFiles)
+  virtualFsFilesRef.current = virtualFsFiles
+  const fsRootRef = useRef(fsRoot)
+  fsRootRef.current = fsRoot
+
+  // On mount: restore local FS root from localStorage if enabled
+  useEffect(() => {
+    const enabled = localStorage.getItem('pancake_fs_local_enabled') === 'true'
+    const savedRoot = localStorage.getItem('pancake_fs_root')
+    if (enabled && savedRoot) {
+      fetch('http://127.0.0.1:4174/fs/set-root', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: savedRoot }),
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data?.resolved) setFsRoot(data.resolved) })
+        .catch(() => {})
+    } else {
+      fetchFsRoot().then(root => { if (root) setFsRoot(root) })
+    }
+  }, [])
 
   function handleSaveConfig(c: Config) {
     setConfig(c)
     saveConfig(c)
   }
 
+  function handleDefaultFsChange(level: FsAccess) {
+    setDefaultFsAccess(level)
+    localStorage.setItem('pancake_default_fs_access', level)
+  }
+
+  function togglePancakeEnabled() {
+    setPancakeEnabled(prev => {
+      const next = !prev
+      localStorage.setItem('pancake_virtual_fs_enabled', String(next))
+      return next
+    })
+  }
+
+  function toggleLocalEnabled() {
+    setLocalEnabled(prev => {
+      const next = !prev
+      localStorage.setItem('pancake_fs_local_enabled', String(next))
+      return next
+    })
+  }
+
   function addSession(model: string, name: string) {
-    setSessions(prev => [...prev, newSession(model, name)])
+    const session = createSession(model, name, sessions.length + 1, defaultFsAccess, pancakeEnabled, localEnabled)
+    setSessions(prev => [...prev, session])
   }
 
   function removeSession(id: string) {
@@ -120,10 +231,38 @@ export default function App() {
     setSessions(updated)
   }
 
+  function setFsAccess(id: string, level: FsAccess) {
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, fsAccess: level } : s))
+  }
+
+  function addVirtualFiles(files: VirtualFile[]) {
+    setVirtualFsFiles(prev => {
+      const existing = new Map(prev.map(f => [`${f.name}:${f.size}`, f]))
+      const toAdd: VirtualFile[] = []
+      const duplicates: string[] = []
+      for (const f of files) {
+        if (existing.has(`${f.name}:${f.size}`)) {
+          duplicates.push(f.name)
+        } else {
+          toAdd.push(f)
+        }
+      }
+      if (duplicates.length > 0) {
+        // Non-blocking notification — FilesystemPage handles its own UI
+        console.warn('Duplicate files skipped:', duplicates)
+      }
+      return [...prev, ...toAdd]
+    })
+  }
+
+  function removeVirtualFile(name: string) {
+    setVirtualFsFiles(prev => prev.filter(f => f.name !== name))
+  }
+
+
   // Hotkeys: navigate and select sessions
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      // Don't fire hotkeys when typing in an input/textarea (except chat-input which we allow)
       const tag = (e.target as HTMLElement).tagName
       const isChatInput = (e.target as HTMLElement).classList.contains('chat-input')
       if ((tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') && !isChatInput) return
@@ -132,7 +271,6 @@ export default function App() {
       const sessions = sessionsRef.current
       const count = sessions.length
 
-      // These hotkeys work globally regardless of session count
       if (eventMatchesHotkey(e, hotkeys.newSession)) {
         e.preventDefault()
         setShowNewSession(true)
@@ -148,7 +286,6 @@ export default function App() {
 
       const COLS = 4
 
-      // Navigation: move active tile index (selection unchanged)
       if (eventMatchesHotkey(e, hotkeys.right)) {
         e.preventDefault()
         setActiveTileIndex(i => (i + 1) % count)
@@ -161,8 +298,6 @@ export default function App() {
       } else if (eventMatchesHotkey(e, hotkeys.up)) {
         e.preventDefault()
         setActiveTileIndex(i => Math.max(i - COLS, 0))
-
-      // Selection: add origin + destination tile to selected set
       } else if (eventMatchesHotkey(e, hotkeys.selectRight)) {
         e.preventDefault()
         setActiveTileIndex(i => {
@@ -191,22 +326,18 @@ export default function App() {
           setSelectedIds(s => { const n = new Set(s); n.add(sessions[i].id); n.add(sessions[next].id); return n })
           return next
         })
-
-      // Focus: clear selection (deselect all)
       } else if (eventMatchesHotkey(e, hotkeys.focus)) {
         const active = sessions[activeTileIndexRef.current]
         if (active) {
           e.preventDefault()
           setSelectedIds(new Set())
         }
-
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  // Focus active tile's input when index changes, and clear typed text
   useEffect(() => {
     setActiveInputValue('')
     const inputs = document.querySelectorAll<HTMLInputElement>('.chat-input')
@@ -256,12 +387,24 @@ export default function App() {
           return { ...s, isStreaming: false, status: `Error: ${err}` }
         }))
       },
-      () => notepadRef.current,
-      (s) => setNotepadContent(s),
-      (toolName) => {
-        setSessions(prev => prev.map(s =>
-          s.id === sessionId ? { ...s, status: `Using tool: ${toolName}...` } : s
-        ))
+      {
+        getNotepad: () => notepadRef.current,
+        setNotepad: (s) => setNotepadContent(s),
+        fsAccess: session.fsAccess,
+        localEnabled: session.localEnabled,
+        fsRoot: fsRootRef.current,
+        pancakeEnabled: session.pancakeEnabled,
+        virtualFsFiles: virtualFsFilesRef.current,
+        removeVirtualFile: (name) => setVirtualFsFiles(prev => prev.filter(f => f.name !== name)),
+        renameVirtualFile: (from, to) => setVirtualFsFiles(prev => prev.map(f => f.name === from ? { ...f, name: to } : f)),
+        confirmVirtualDelete: (name) => new Promise<boolean>(resolve => {
+          setVirtualDeleteConfirm({ name, resolve })
+        }),
+        onToolCall: (toolName) => {
+          setSessions(prev => prev.map(s =>
+            s.id === sessionId ? { ...s, status: `Using tool: ${toolName}...` } : s
+          ))
+        },
       },
     )
   }, [])
@@ -272,7 +415,6 @@ export default function App() {
       return
     }
     setActiveInputValue('')
-    // If a selection exists, broadcast to all selected + the active (focused) session
     const targets = selectedIds.size > 0
       ? Array.from(new Set([...selectedIds, sessionId]))
       : [sessionId]
@@ -297,6 +439,7 @@ export default function App() {
     setNotepadContent('')
     setShowNotepadWindow(false)
     setNotepadPos({ x: 80, y: 80 })
+    setVirtualFsFiles([])
     setPage('sessions')
   }
 
@@ -318,9 +461,28 @@ export default function App() {
               className={`nav-btn${page === 'notepad' ? ' nav-btn-active' : ''}`}
               onClick={() => setPage('notepad')}
             >Notepad</button>
+            <button
+              className={`nav-btn${page === 'filesystem' ? ' nav-btn-active' : ''}`}
+              onClick={() => setPage('filesystem')}
+            >Filesystem</button>
           </nav>
         </div>
         <div className="app-header-right">
+          <button
+            className={`fs-quick-toggle${pancakeEnabled ? ' fs-quick-toggle-on-pfs' : ''}`}
+            onClick={togglePancakeEnabled}
+            title={`Pancake's Filesystem: ${pancakeEnabled ? 'enabled' : 'disabled'}`}
+          >
+            PFS
+          </button>
+          <button
+            className={`fs-quick-toggle${localEnabled ? ' fs-quick-toggle-on-lfs' : ''}`}
+            onClick={toggleLocalEnabled}
+            title={`Local Filesystem: ${localEnabled ? 'enabled' : 'disabled'}`}
+          >
+            LFS
+          </button>
+          <DefaultFsSelector value={defaultFsAccess} onChange={handleDefaultFsChange} />
           <button className="reset-btn" onClick={handleReset} title="Reset everything">↺</button>
           <button className="cog-btn" onClick={() => setShowConfig(true)} title="Config (⚙)">⚙</button>
         </div>
@@ -331,6 +493,18 @@ export default function App() {
           <HowToPage />
         ) : page === 'notepad' ? (
           <NotepadPage content={notepadContent} onChange={setNotepadContent} toggleHotkey={config.hotkeys.toggleNotepad} />
+        ) : page === 'filesystem' ? (
+          <FilesystemPage
+            virtualFsFiles={virtualFsFiles}
+            onAddFiles={addVirtualFiles}
+            onRemoveFile={removeVirtualFile}
+            fsRoot={fsRoot}
+            onFsRootChange={setFsRoot}
+            pancakeEnabled={pancakeEnabled}
+            onPancakeToggle={togglePancakeEnabled}
+            localEnabled={localEnabled}
+            onLocalToggle={toggleLocalEnabled}
+          />
         ) : sessions.length === 0 ? (
           <div className="empty-state">
             No sessions yet. Click + or press {config.hotkeys.newSession} to start one.
@@ -349,6 +523,7 @@ export default function App() {
             onReorder={reorderSessions}
             onFocusTile={focusTile}
             onActiveInputChange={setActiveInputValue}
+            onFsAccessChange={setFsAccess}
           />
         )}
       </main>
@@ -381,6 +556,21 @@ export default function App() {
           onPosChange={setNotepadPos}
           onClose={() => setShowNotepadWindow(false)}
         />
+      )}
+
+      {virtualDeleteConfirm && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h2>Delete file from Pancake's Filesystem?</h2>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text)', lineHeight: 1.6 }}>
+              The agent is requesting to delete <strong>{virtualDeleteConfirm.name}</strong> from Pancake's virtual filesystem. This cannot be undone.
+            </p>
+            <div className="modal-actions">
+              <button onClick={() => { virtualDeleteConfirm.resolve(false); setVirtualDeleteConfirm(null) }}>Cancel</button>
+              <button className="btn-primary" onClick={() => { virtualDeleteConfirm.resolve(true); setVirtualDeleteConfirm(null) }}>Delete</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

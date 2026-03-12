@@ -44,6 +44,7 @@ function buildCombo(e: KeyboardEvent | React.KeyboardEvent): string {
 export default function ConfigModal({ config, onSave, onClose }: Props) {
   const [apiKey, setApiKey] = useState(config.apiKey)
   const [defaultModel, setDefaultModel] = useState(config.defaultModel)
+  const [defaultAgentInteropEnabled, setDefaultAgentInteropEnabled] = useState(config.defaultAgentInteropEnabled)
   const [hotkeys, setHotkeys] = useState<Hotkeys>({ ...config.hotkeys })
   const [recording, setRecording] = useState<HotkeyField | null>(null)
   const inputRefs = useRef<Partial<Record<HotkeyField, HTMLInputElement>>>({})
@@ -54,7 +55,7 @@ export default function ConfigModal({ config, onSave, onClose }: Props) {
   }, [])
 
   function handleSave() {
-    onSave({ apiKey, defaultModel, hotkeys })
+    onSave({ apiKey, defaultModel, defaultAgentInteropEnabled, hotkeys })
     onClose()
   }
 
@@ -101,6 +102,18 @@ export default function ConfigModal({ config, onSave, onClose }: Props) {
             {MODELS.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
         </label>
+
+        <label style={{ flexDirection: 'row', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={defaultAgentInteropEnabled}
+            onChange={e => setDefaultAgentInteropEnabled(e.target.checked)}
+          />
+          Agent Interoperability (default for new sessions)
+        </label>
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '-0.5rem 0 0.5rem', lineHeight: 1.5 }}>
+          Allow agents to list, read, message, create, and delete other agents. Can be overridden per session on each tile.
+        </p>
 
         <div className="config-section-title">Hotkeys</div>
         <div className="hotkey-grid">

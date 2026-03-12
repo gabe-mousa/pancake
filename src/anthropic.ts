@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { Message, FsAccess, VirtualFile } from './types'
+import type { Message, FsAccess, VirtualFile, AgentMeta } from './types'
 
 const FS_SERVER = 'http://127.0.0.1:4174'
 
@@ -102,6 +102,61 @@ const FS_DELETE_TOOLS: Anthropic.Tool[] = [
   },
 ]
 
+const AGENT_INTEROP_TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'list_agents',
+    description: 'List all currently active agent sessions in this Pancake workspace (excludes yourself).',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'read_agent_chat',
+    description: "Read the full conversation history of another agent session.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'The id of the agent session to read.' },
+      },
+      required: ['agent_id'],
+    },
+  },
+  {
+    name: 'send_message_to_agent',
+    description: 'Send a message to another agent session, triggering a response from it. By default fire-and-forget; set await_response to true to wait for the reply.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'The id of the target agent session.' },
+        message: { type: 'string', description: 'The message to send.' },
+        await_response: { type: 'boolean', description: 'If true, wait for the target agent to finish responding and return its reply. Default false.' },
+      },
+      required: ['agent_id', 'message'],
+    },
+  },
+  {
+    name: 'create_agent',
+    description: 'Create a new agent session in the Pancake workspace.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Name for the new session. Defaults to "Session N".' },
+        model: { type: 'string', description: 'Model to use. Defaults to the app default model.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'delete_agent',
+    description: 'Delete (close) another agent session and its chat history. Cannot delete yourself or a streaming session.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'The id of the agent session to delete.' },
+      },
+      required: ['agent_id'],
+    },
+  },
+]
+
 const VIRTUAL_FS_TOOLS: Anthropic.Tool[] = [
   {
     name: 'read_virtual_file',
@@ -142,6 +197,14 @@ const VIRTUAL_FS_TOOLS: Anthropic.Tool[] = [
 
 // ── StreamContext ─────────────────────────────────────────────────────────────
 
+export interface AgentInteropContext {
+  listAgents: () => AgentMeta[]
+  readAgentChat: (agentId: string) => Message[] | { error: string }
+  sendMessageToAgent: (agentId: string, message: string, awaitResponse: boolean) => Promise<{ queued: true; agentName: string } | { response: string; agentName: string } | { error: string }>
+  createAgent: (name?: string, model?: string) => Promise<AgentMeta | { error: string }>
+  deleteAgent: (agentId: string) => Promise<{ success: true } | { error: string }>
+}
+
 export interface StreamContext {
   getNotepad: () => string
   setNotepad: (s: string) => void
@@ -154,6 +217,8 @@ export interface StreamContext {
   renameVirtualFile: (from: string, to: string) => void
   confirmVirtualDelete: (name: string) => Promise<boolean>
   onToolCall?: (name: string) => void
+  agentInterop: AgentInteropContext | null  // null when interop disabled for this session
+  signal?: AbortSignal
 }
 
 // ── System prompt builder ─────────────────────────────────────────────────────
@@ -211,6 +276,23 @@ function buildSystemPrompt(ctx: StreamContext): string | undefined {
       `They live inside the app only and are never written to disk.\n` +
       `Use list_virtual_files() to see all available files, and read_virtual_file(name) to read them.` +
       fileList
+    )
+  }
+
+  // Agent interoperability section
+  if (ctx.agentInterop) {
+    parts.push(
+      `## Agent Interoperability\n` +
+      `You can interact with other agent sessions running in this Pancake workspace.\n\n` +
+      `- list_agents — see all available agents and their status\n` +
+      `- read_agent_chat — read another agent's full conversation history\n` +
+      `- send_message_to_agent — send a message to another agent (set await_response: true to wait for their reply before continuing; default is fire-and-forget)\n` +
+      `- create_agent — spawn a new agent session\n` +
+      `- delete_agent — close and remove an agent session\n\n` +
+      `Important constraints:\n` +
+      `- You cannot message or delete yourself.\n` +
+      `- You cannot message an agent that is currently streaming (isStreaming: true). Use list_agents to check status first, then retry.\n` +
+      `- delete_agent may trigger a user confirmation prompt; if the user cancels, the tool will return an error.`
     )
   }
 
@@ -278,6 +360,36 @@ async function executeTool(block: Anthropic.ToolUseBlock, ctx: StreamContext): P
     return `"${name}" has been deleted from Pancake's virtual filesystem.`
   }
 
+  // Agent interop tools
+  if (ctx.agentInterop && block.name === 'list_agents') {
+    const agents = ctx.agentInterop.listAgents()
+    if (agents.length === 0) return '(no other agent sessions are currently open)'
+    return JSON.stringify(agents, null, 2)
+  }
+  if (ctx.agentInterop && block.name === 'read_agent_chat') {
+    const result = ctx.agentInterop.readAgentChat(input.agent_id)
+    if ('error' in result) return `Error: ${result.error}`
+    if (result.length === 0) return '(this agent has no messages yet)'
+    return JSON.stringify(result.map(m => ({ role: m.role, content: m.content })), null, 2)
+  }
+  if (ctx.agentInterop && block.name === 'send_message_to_agent') {
+    const awaitResponse = (block.input as Record<string, unknown>).await_response === true
+    const result = await ctx.agentInterop.sendMessageToAgent(input.agent_id, input.message, awaitResponse)
+    if ('error' in result) return `Error: ${result.error}`
+    if ('response' in result) return `Agent "${result.agentName}" replied:\n${result.response}`
+    return `Message queued for agent "${result.agentName}".`
+  }
+  if (ctx.agentInterop && block.name === 'create_agent') {
+    const result = await ctx.agentInterop.createAgent(input.name, input.model)
+    if ('error' in result) return `Error: ${result.error}`
+    return `Created agent "${result.name}" (id: ${result.id}, model: ${result.model}).`
+  }
+  if (ctx.agentInterop && block.name === 'delete_agent') {
+    const result = await ctx.agentInterop.deleteAgent(input.agent_id)
+    if ('error' in result) return `Error: ${result.error}`
+    return 'Agent deleted.'
+  }
+
   // Local filesystem tools — all go via the FS bridge server
   const fsToolMap: Record<string, () => Promise<Response>> = {
     read_file: () => fetch(`${FS_SERVER}/fs/read?path=${encodeURIComponent(input.path)}`),
@@ -339,6 +451,7 @@ export async function streamMessage(
     ...(localActive && (ctx.fsAccess === 'read-write' || ctx.fsAccess === 'read-write-delete') ? FS_WRITE_TOOLS : []),
     ...(localActive && ctx.fsAccess === 'read-write-delete' ? FS_DELETE_TOOLS : []),
     ...(virtualActive ? VIRTUAL_FS_TOOLS : []),
+    ...(ctx.agentInterop ? AGENT_INTEROP_TOOLS : []),
   ]
 
   const systemPrompt = buildSystemPrompt(ctx)
@@ -352,6 +465,8 @@ export async function streamMessage(
 
   try {
     while (true) {
+      if (ctx.signal?.aborted) break
+
       const requestParams: Anthropic.MessageStreamParams = {
         model,
         max_tokens: 4096,
@@ -361,6 +476,7 @@ export async function streamMessage(
       if (systemPrompt) requestParams.system = systemPrompt
 
       const stream = client.messages.stream(requestParams)
+      ctx.signal?.addEventListener('abort', () => stream.abort(), { once: true })
 
       const toolUseBlocks: Anthropic.ToolUseBlock[] = []
       let currentToolUse: { id: string; name: string; inputJson: string } | null = null

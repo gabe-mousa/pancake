@@ -24,9 +24,11 @@ interface Props {
   onFocusTile: (index: number) => void
   onActiveInputChange: (value: string) => void
   onFsAccessChange: (sessionId: string, level: FsAccess) => void
+  onAgentInteropChange: (sessionId: string, value: boolean | null) => void
+  defaultAgentInteropEnabled: boolean
 }
 
-export default function TileGrid({ sessions, streamingContents, activeTileIndex, selectedIds, activeInputValue, expandHotkey, onSendMessage, onRemove, onRename, onReorder, onFocusTile, onActiveInputChange, onFsAccessChange }: Props) {
+export default function TileGrid({ sessions, streamingContents, activeTileIndex, selectedIds, activeInputValue, expandHotkey, onSendMessage, onRemove, onRename, onReorder, onFocusTile, onActiveInputChange, onFsAccessChange, onAgentInteropChange, defaultAgentInteropEnabled }: Props) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   function handleDragEnd(event: DragEndEvent) {
@@ -58,6 +60,9 @@ export default function TileGrid({ sessions, streamingContents, activeTileIndex,
               onFocus={() => onFocusTile(i)}
               onActiveInputChange={onActiveInputChange}
               onFsAccessChange={onFsAccessChange}
+              onAgentInteropChange={onAgentInteropChange}
+              defaultAgentInteropEnabled={defaultAgentInteropEnabled}
+              unread={session.unread}
             />
           ))}
         </div>

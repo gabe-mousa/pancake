@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { Message } from '../types'
 
@@ -16,10 +16,6 @@ interface Props {
 
 export default function ChatWindow({ messages, isStreaming, streamingContent, activeInputValue, mirroredInputValue, onSendMessage, onFocus, onActiveInputChange }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingContent])
 
   // Active tile: controlled input, user types here
   function handleActiveKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -53,7 +49,12 @@ export default function ChatWindow({ messages, isStreaming, streamingContent, ac
       <div className="chat-messages">
         {messages.map((msg, i) => (
           <div key={i} className={`message message-${msg.role}`}>
-            <span className="message-role">{msg.role === 'user' ? 'You' : 'Agent'}</span>
+            <span className="message-role">
+              {msg.role === 'user' ? 'You' : 'Agent'}
+            </span>
+            {msg.fromAgent && (
+              <span className="message-from-agent">sent by "{msg.fromAgent}"</span>
+            )}
             <div className="message-content">
               <ReactMarkdown>{msg.content}</ReactMarkdown>
             </div>

@@ -18,6 +18,9 @@ interface Props {
   onFocus: () => void
   onActiveInputChange: (value: string) => void
   onFsAccessChange: (sessionId: string, level: FsAccess) => void
+  onAgentInteropChange: (sessionId: string, value: boolean | null) => void
+  defaultAgentInteropEnabled: boolean
+  unread: boolean
 }
 
 const FS_LEVELS: FsAccess[] = ['none', 'read', 'read-write', 'read-write-delete']
@@ -47,11 +50,12 @@ function hotkeyMatches(e: KeyboardEvent, combo: string): boolean {
   )
 }
 
-export default function Tile({ session, streamingContent, isActive, isSelected, activeInputValue, mirroredInputValue, expandHotkey, onSendMessage, onRemove, onRename, onFocus, onActiveInputChange, onFsAccessChange }: Props) {
+export default function Tile({ session, streamingContent, isActive, isSelected, activeInputValue, mirroredInputValue, expandHotkey, onSendMessage, onRemove, onRename, onFocus, onActiveInputChange, onFsAccessChange, onAgentInteropChange, defaultAgentInteropEnabled, unread }: Props) {
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState(session.name)
   const [expanded, setExpanded] = useState(false)
   const [showFsMenu, setShowFsMenu] = useState(false)
+  const [showInteropMenu, setShowInteropMenu] = useState(false)
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: session.id })
 
@@ -132,6 +136,24 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
     return () => window.removeEventListener('click', onClickOutside)
   }, [showFsMenu])
 
+  // Close interop menu on outside click
+  useEffect(() => {
+    if (!showInteropMenu) return
+    function onClickOutside() { setShowInteropMenu(false) }
+    window.addEventListener('click', onClickOutside)
+    return () => window.removeEventListener('click', onClickOutside)
+  }, [showInteropMenu])
+
+  const effectiveInteropEnabled = session.agentInteropEnabled !== null
+    ? session.agentInteropEnabled
+    : defaultAgentInteropEnabled
+
+  const interopLabel = session.agentInteropEnabled === null
+    ? `AIO: default(${defaultAgentInteropEnabled ? 'on' : 'off'})`
+    : session.agentInteropEnabled
+      ? 'AIO: on'
+      : 'AIO: off'
+
   const fsAccess = session.fsAccess
   const fsBadgeClass = `fs-badge fs-badge-${fsAccess}`
 
@@ -184,12 +206,43 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
             </div>
           )}
         </div>
+        <div className="fs-badge-wrapper" onClick={e => e.stopPropagation()}>
+          <button
+            className={`fs-badge ${effectiveInteropEnabled ? 'fs-badge-aio' : 'fs-badge-none'}`}
+            onClick={() => setShowInteropMenu(prev => !prev)}
+            title="Set agent interoperability for this session"
+          >
+            {interopLabel}
+          </button>
+          {showInteropMenu && (
+            <div className="fs-menu">
+              <div className="fs-menu-label">Agent interop for this session</div>
+              {([null, true, false] as (boolean | null)[]).map(val => {
+                const label = val === null
+                  ? `Default (${defaultAgentInteropEnabled ? 'on' : 'off'})`
+                  : val ? 'On' : 'Off'
+                return (
+                  <button
+                    key={String(val)}
+                    className={`fs-menu-item${session.agentInteropEnabled === val ? ' fs-menu-item-active' : ''}`}
+                    onClick={() => { onAgentInteropChange(session.id, val); setShowInteropMenu(false) }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
         <button className="tile-expand" onClick={e => { e.stopPropagation(); handleExpand() }} title={expanded ? 'Minimize' : 'Expand'}>
           {expanded ? '⊡' : '⊞'}
         </button>
         <button className="tile-remove" onClick={e => { e.stopPropagation(); onRemove(session.id) }}>✕</button>
       </div>
-      <div className="tile-status">{session.status || 'Idle'}</div>
+      <div className="tile-status">
+        {unread && <span className="tile-unread-dot" title="New response" />}
+        {session.status || 'Idle'}
+      </div>
       <ChatWindow
         messages={session.messages}
         isStreaming={session.isStreaming}

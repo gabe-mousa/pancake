@@ -8,6 +8,7 @@ export default function HowToPage() {
           <li><a href="#getting-started">Getting started</a></li>
           <li><a href="#session-tiles">Session tiles</a>
             <ul>
+              <li><a href="#interop-badge">AIO badge</a></li>
               <li><a href="#fs-badge">FS access badge</a></li>
               <li><a href="#pfs-lfs-dots">PFS / LFS indicators</a></li>
             </ul>
@@ -19,6 +20,14 @@ export default function HowToPage() {
               <li><a href="#lfs">LFS — local filesystem</a></li>
               <li><a href="#both-fs">Using both together</a></li>
               <li><a href="#default-lfs">Default LFS access</a></li>
+            </ul>
+          </li>
+          <li><a href="#agent-interop">Agent interoperability</a>
+            <ul>
+              <li><a href="#interop-tools">Agent tools</a></li>
+              <li><a href="#interop-toggle">Enabling / disabling</a></li>
+              <li><a href="#interop-messages">Injected messages</a></li>
+              <li><a href="#interop-delete-confirm">Delete confirmation</a></li>
             </ul>
           </li>
           <li><a href="#notepad">Notepad</a></li>
@@ -37,7 +46,8 @@ export default function HowToPage() {
             Pancake is a local web app for running multiple Claude AI agent sessions side by side.
             Each session is an independent conversation with its own history, model, and filesystem access.
             You can run them simultaneously — writing, coding, research, brainstorming — without losing
-            context between them. Agents can autonomously read and write files, use the Notepad, and more.
+            context between them. Agents can autonomously read and write files, use the Notepad, and
+            interact directly with each other through agent interoperability tools.
           </p>
         </section>
 
@@ -56,11 +66,22 @@ export default function HowToPage() {
             <li>Each tile is one fully independent session with its own conversation history, model, and tool access.</li>
             <li><strong>Click</strong> anywhere on a tile to focus it. The focused tile has a brown outline.</li>
             <li><strong>Double-click</strong> the session name to rename it inline.</li>
-            <li>The <strong>status bar</strong> below the tile header shows what the agent is currently doing (Idle, Thinking, Using tool, Done, or an error).</li>
+            <li>The <strong>status bar</strong> below the tile header shows what the agent is currently doing (Idle, Thinking, Using tool, Done, or an error). A small <strong>orange pulsing dot</strong> appears at the left of the status bar when the session has a new response you haven't seen — it clears automatically when you focus the tile or send it a message.</li>
+            <li>Tiles do <strong>not</strong> auto-scroll when agents respond. Scroll position is fully manual, so multiple active agents won't fight over the view.</li>
             <li>Click <strong>⊞</strong> or press <code>Shift+Ctrl+F</code> to expand a tile to full screen. Press <strong>Esc</strong> or <code>Shift+Ctrl+F</code> again, or click <strong>⊡</strong>, to minimize.</li>
             <li>Drag the <strong>⠿</strong> handle to reorder tiles in the grid.</li>
             <li>Click <strong>✕</strong> to close a session permanently.</li>
             <li>The grid fits <strong>4 tiles per row</strong>. Tiles have a fixed height and scroll internally.</li>
+          </ul>
+
+          <h3 id="interop-badge">AIO badge</h3>
+          <p>
+            Each tile also has an <strong>AIO badge</strong> (Agent Interoperability) in its header, controlling whether that session can use the agent interoperability tools. Click it to open a dropdown:
+          </p>
+          <ul>
+            <li><strong>Default (on/off)</strong> — inherits the global default set in Config</li>
+            <li><strong>On</strong> — interop tools always enabled for this session, regardless of global setting</li>
+            <li><strong>Off</strong> — interop tools always disabled for this session, regardless of global setting</li>
           </ul>
 
           <h3 id="fs-badge">FS access badge</h3>
@@ -174,6 +195,68 @@ export default function HowToPage() {
           </p>
         </section>
 
+        <section id="agent-interop">
+          <h2>Agent interoperability</h2>
+          <p>
+            Agents can directly interact with other agent sessions running in the same Pancake workspace. Each session can list, read the chat history of, send messages to, create, and delete other sessions — all through Claude tool calls, without any user involvement.
+          </p>
+          <p>
+            This enables multi-agent workflows where sessions divide up tasks, hand off work, review each other's output, or dynamically spawn and clean up helpers as needed.
+          </p>
+
+          <h3 id="interop-tools">Agent tools</h3>
+          <p>When agent interop is enabled for a session, five tools become available:</p>
+          <ul>
+            <li>
+              <code>list_agents</code> — returns a list of all other open sessions with their id, name, model, status, streaming state, and message count. This is the starting point for any inter-agent workflow: the agent uses the name to identify the right target and the id to call the other tools.
+            </li>
+            <li>
+              <code>read_agent_chat(agent_id)</code> — returns the full conversation history of another session as an array of <code>{'{role, content}'}</code> messages. Fully unrestricted — any session can read any other session's history.
+            </li>
+            <li>
+              <code>send_message_to_agent(agent_id, message, await_response?)</code> — injects a user-role message into another session, triggering that agent to respond. By default this is fire-and-forget: the tool returns immediately and both sessions run in parallel. Set <code>await_response: true</code> to block until the target agent finishes responding, then receive its reply text directly in the tool result. Cannot send to self or to a session that is currently streaming.
+            </li>
+            <li>
+              <code>create_agent(name?, model?)</code> — creates a new session tile in the workspace. <code>name</code> defaults to "Session N" and <code>model</code> defaults to the app's configured default. Returns the new session's id, name, and model so the agent can immediately start working with it.
+            </li>
+            <li>
+              <code>delete_agent(agent_id)</code> — closes another session and permanently erases its chat history. Cannot delete self or a currently streaming session. Triggers a confirmation dialog (see below). Cannot be undone.
+            </li>
+          </ul>
+
+          <h3 id="interop-toggle">Enabling / disabling</h3>
+          <p>
+            Agent interop follows the same two-level toggle pattern as LFS access:
+          </p>
+          <ul>
+            <li><strong>Global default</strong> — the <strong>AIO button</strong> in the top-right header (lavender when on) toggles the default for all new sessions. The same setting is also accessible in <strong>Config (⚙)</strong> via the "Agent Interoperability" checkbox. On by default.</li>
+            <li><strong>Per-session override</strong> — the <strong>AIO badge</strong> on each tile header. Click it to choose Default / On / Off for that session specifically, overriding the global setting. A session set to Off will never receive the interop tools in its system prompt, even if the global default is On.</li>
+          </ul>
+          <p className="how-to-note">
+            <strong>Note:</strong> The interop toggle only controls whether the <em>calling</em> session has access to the tools. Any session can be read or messaged regardless of its own toggle — the toggle is not a privacy control, it is a capability control.
+          </p>
+
+          <h3 id="interop-messages">Injected messages</h3>
+          <p>
+            When an agent uses <code>send_message_to_agent</code>, the message appears in the target session's chat window as a normal user-role message, with a small italic annotation below the role label:
+          </p>
+          <ul>
+            <li>The annotation reads: <em>sent by "Agent Name"</em> — showing which session sent it.</li>
+            <li>The injected message appears in the target's tile just like any user message, and the target agent's response appears normally.</li>
+            <li>Injected messages are stripped of metadata before being sent to the Claude API — they appear to Claude as plain user messages.</li>
+          </ul>
+
+          <h3 id="interop-delete-confirm">Delete confirmation</h3>
+          <p>
+            When an agent calls <code>delete_agent</code>, a confirmation dialog appears before anything is deleted:
+          </p>
+          <ul>
+            <li>Click <strong>Cancel</strong> to abort — the tool returns an error and the agent is informed.</li>
+            <li>Click <strong>Delete</strong> to proceed — the session is closed immediately.</li>
+            <li>Check <strong>Don't ask me again this session</strong> to suppress the dialog for all subsequent <code>delete_agent</code> calls during the current page session. This resets on page reload.</li>
+          </ul>
+        </section>
+
         <section id="notepad">
           <h2>Notepad</h2>
           <p>
@@ -203,11 +286,13 @@ export default function HowToPage() {
               <tr><th>Control</th><th>What it does</th></tr>
             </thead>
             <tbody>
-              <tr><td><strong>PFS</strong> (green when on)</td><td>Toggle Pancake's virtual filesystem globally</td></tr>
-              <tr><td><strong>LFS</strong> (blue when on)</td><td>Toggle local filesystem bridge globally</td></tr>
+              <tr><td><strong>PFS</strong> (green when on)</td><td>Toggle Pancake's virtual filesystem globally for new sessions</td></tr>
+              <tr><td><strong>LFS</strong> (blue when on)</td><td>Toggle local filesystem bridge globally for new sessions</td></tr>
+              <tr><td><strong>AIO</strong> (lavender when on)</td><td>Toggle agent interoperability globally — the default for new sessions. Per-session overrides can still be set on each tile's Interop badge.</td></tr>
               <tr><td><strong>LFS default: …</strong></td><td>Set the default FS access level for new sessions (LFS only)</td></tr>
+              <tr><td><strong>■</strong></td><td>Emergency stop — immediately aborts all actively streaming agents. Disabled (greyed out) when no agents are running. Useful when agents are spawning sub-agents uncontrollably.</td></tr>
               <tr><td><strong>↺</strong></td><td>Reset everything — sessions, notes, and settings (confirmation required)</td></tr>
-              <tr><td><strong>⚙</strong></td><td>Open Config — API key, default model, hotkeys</td></tr>
+              <tr><td><strong>⚙</strong></td><td>Open Config — API key, default model, agent interop default, hotkeys</td></tr>
             </tbody>
           </table>
         </section>

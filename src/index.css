@@ -11,6 +11,7 @@
   --brown-faint: #e8ddd4;
   --brown-border: #c4a882;
   --text: #3a2517;
+  --text-muted: #8a7060;
 }
 
 body {
@@ -83,6 +84,20 @@ body {
   gap: 4px;
 }
 
+.kill-btn {
+  background: none;
+  border: 1px solid var(--brown-border);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  padding: 3px 7px;
+  color: var(--brown-light);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  line-height: 1;
+}
+.kill-btn:hover:not(:disabled) { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+.kill-btn:disabled { opacity: 0.35; cursor: default; }
+
 .reset-btn {
   background: none;
   border: none;
@@ -141,6 +156,17 @@ body {
   background: #bfdbfe;
   border-color: #60a5fa;
   color: #1e40af;
+}
+
+.fs-quick-toggle-on-aio {
+  background: #f4f0fb;
+  color: #8560b0;
+  border-color: #cdb8e8;
+}
+.fs-quick-toggle-on-aio:hover {
+  background: #ead8f5;
+  border-color: #b49ad4;
+  color: #6a4896;
 }
 
 .app-main {
@@ -260,6 +286,24 @@ body {
 .tile-fs-dot-lfs {
   background: #2563eb;
   box-shadow: 0 0 0 1.5px #93c5fd;
+}
+
+.tile-unread-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f97316;
+  box-shadow: 0 0 0 1.5px #fdba74;
+  margin-right: 5px;
+  vertical-align: middle;
+  flex-shrink: 0;
+  animation: unread-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes unread-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 .tile-remove,
@@ -387,6 +431,15 @@ body {
 }
 
 .message-user .message-role { color: var(--brown); }
+
+.message-from-agent {
+  display: block;
+  font-size: 0.7rem;
+  font-style: italic;
+  color: var(--text-muted);
+  margin-top: -2px;
+  margin-bottom: 4px;
+}
 
 .chat-input {
   border: none;
@@ -647,6 +700,7 @@ body {
   margin: 0 0 10px 0;
   padding-bottom: 5px;
   border-bottom: 1px solid var(--brown-faint);
+  scroll-margin-top: 64px;
 }
 
 .how-to-page h3 {
@@ -654,6 +708,7 @@ body {
   color: var(--brown);
   font-weight: 700;
   margin: 18px 0 8px 0;
+  scroll-margin-top: 64px;
 }
 
 .how-to-page section {
@@ -1030,6 +1085,11 @@ body {
   background: #dbeafe;
   color: #1d4ed8;
   border-color: #93c5fd;
+}
+.fs-badge-aio {
+  background: #f4f0fb;
+  color: #8560b0;
+  border-color: #cdb8e8;
 }
 .fs-badge-read-write {
   background: #fef3c7;

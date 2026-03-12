@@ -3,6 +3,16 @@ export type Role = 'user' | 'assistant'
 export interface Message {
   role: Role
   content: string
+  fromAgent?: string  // name of the agent session that injected this message, if any
+}
+
+export interface AgentMeta {
+  id: string
+  name: string
+  model: string
+  status: string
+  isStreaming: boolean
+  messageCount: number
 }
 
 export type FsAccess = 'none' | 'read' | 'read-write' | 'read-write-delete'
@@ -17,6 +27,8 @@ export interface Session {
   fsAccess: FsAccess
   pancakeEnabled: boolean
   localEnabled: boolean
+  agentInteropEnabled: boolean | null  // null = inherit from global default
+  unread: boolean
 }
 
 export interface VirtualFile {
@@ -47,4 +59,5 @@ export interface Config {
   apiKey: string
   defaultModel: string
   hotkeys: Hotkeys
+  defaultAgentInteropEnabled: boolean
 }

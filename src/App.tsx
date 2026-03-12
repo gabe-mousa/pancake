@@ -8,11 +8,12 @@ import NotepadWindow from './components/NotepadWindow'
 import NotepadPage from './components/NotepadPage'
 import FilesystemPage from './pages/FilesystemPage'
 import { streamMessage } from './anthropic'
-import type { Session, Config, FsAccess, VirtualFile } from './types'
+import type { Session, Config, FsAccess, VirtualFile, AgentMeta } from './types'
 
 const DEFAULT_CONFIG: Config = {
   apiKey: '',
   defaultModel: 'claude-sonnet-4-6',
+  defaultAgentInteropEnabled: true,
   hotkeys: {
     right: 'Alt+ArrowRight',
     left: 'Alt+ArrowLeft',
@@ -71,6 +72,8 @@ function createSession(model: string, name: string, displayNumber: number, fsAcc
     fsAccess,
     pancakeEnabled,
     localEnabled,
+    agentInteropEnabled: null,
+    unread: false,
   }
 }
 
@@ -149,6 +152,8 @@ export default function App() {
   const [virtualFsFiles, setVirtualFsFiles] = useState<VirtualFile[]>([])
   const [fsRoot, setFsRoot] = useState<string>('')
   const [virtualDeleteConfirm, setVirtualDeleteConfirm] = useState<{ name: string; resolve: (ok: boolean) => void } | null>(null)
+  const [agentDeleteConfirm, setAgentDeleteConfirm] = useState<{ agentId: string; agentName: string; resolve: () => void; reject: (e: { error: string }) => void } | null>(null)
+  const [suppressDeleteConfirm, setSuppressDeleteConfirm] = useState(false)
   const [defaultFsAccess, setDefaultFsAccess] = useState<FsAccess>(() => (localStorage.getItem('pancake_default_fs_access') as FsAccess) || 'none')
   const [pancakeEnabled, setPancakeEnabled] = useState(() => localStorage.getItem('pancake_virtual_fs_enabled') === 'true')
   const [localEnabled, setLocalEnabled] = useState(() => localStorage.getItem('pancake_fs_local_enabled') === 'true')
@@ -165,6 +170,11 @@ export default function App() {
   virtualFsFilesRef.current = virtualFsFiles
   const fsRootRef = useRef(fsRoot)
   fsRootRef.current = fsRoot
+  const suppressDeleteConfirmRef = useRef(suppressDeleteConfirm)
+  suppressDeleteConfirmRef.current = suppressDeleteConfirm
+
+  // Per-session abort controllers for kill-all
+  const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
 
   // On mount: restore local FS root from localStorage if enabled
   useEffect(() => {
@@ -210,6 +220,20 @@ export default function App() {
     })
   }
 
+  function killAllAgents() {
+    abortControllersRef.current.forEach(ctrl => ctrl.abort())
+    abortControllersRef.current.clear()
+    setSessions(prev => prev.map(s => s.isStreaming ? { ...s, isStreaming: false, status: 'Stopped' } : s))
+  }
+
+  function toggleDefaultAgentInterop() {
+    setConfig(prev => {
+      const next = { ...prev, defaultAgentInteropEnabled: !prev.defaultAgentInteropEnabled }
+      saveConfig(next)
+      return next
+    })
+  }
+
   function addSession(model: string, name: string) {
     const session = createSession(model, name, sessions.length + 1, defaultFsAccess, pancakeEnabled, localEnabled)
     setSessions(prev => [...prev, session])
@@ -234,6 +258,99 @@ export default function App() {
 
   function setFsAccess(id: string, level: FsAccess) {
     setSessions(prev => prev.map(s => s.id === id ? { ...s, fsAccess: level } : s))
+  }
+
+  function setAgentInteropEnabled(id: string, value: boolean | null) {
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, agentInteropEnabled: value } : s))
+  }
+
+  function isInteropEnabled(session: Session): boolean {
+    if (session.agentInteropEnabled !== null) return session.agentInteropEnabled
+    return configRef.current.defaultAgentInteropEnabled
+  }
+
+  function buildAgentInteropCallbacks(callerSessionId: string): import('./anthropic').AgentInteropContext {
+    return {
+      listAgents: () =>
+        sessionsRef.current
+          .filter(s => s.id !== callerSessionId)
+          .map((s): AgentMeta => ({
+            id: s.id,
+            name: s.name,
+            model: s.model,
+            status: s.status,
+            isStreaming: s.isStreaming,
+            messageCount: s.messages.length,
+          })),
+
+      readAgentChat: (agentId) => {
+        const s = sessionsRef.current.find(s => s.id === agentId)
+        if (!s) return { error: `No session with id "${agentId}"` }
+        return s.messages
+      },
+
+      sendMessageToAgent: async (agentId, message, awaitResponse) => {
+        if (agentId === callerSessionId) return { error: 'Cannot message yourself' }
+        const target = sessionsRef.current.find(s => s.id === agentId)
+        if (!target) return { error: `No session with id "${agentId}"` }
+        if (target.isStreaming) return { error: `Agent "${target.name}" is currently busy (streaming). Check list_agents and retry when isStreaming is false.` }
+        const agentName = target.name
+        const callerName = sessionsRef.current.find(s => s.id === callerSessionId)?.name ?? 'Another agent'
+        doSend(agentId, message, callerName)
+        if (!awaitResponse) return { queued: true, agentName }
+        // Two-phase poll: wait for isStreaming→true, then wait for isStreaming→false
+        return new Promise((resolve) => {
+          let seenStreaming = false
+          const poll = setInterval(() => {
+            const t = sessionsRef.current.find(s => s.id === agentId)
+            if (!seenStreaming) {
+              if (t?.isStreaming) seenStreaming = true
+            } else {
+              if (!t || !t.isStreaming) {
+                clearInterval(poll)
+                const msgs = t?.messages ?? []
+                const lastMsg = msgs[msgs.length - 1]
+                resolve({ response: lastMsg?.content ?? '', agentName: t?.name ?? agentName })
+              }
+            }
+          }, 100)
+          setTimeout(() => { clearInterval(poll); resolve({ error: 'Timeout waiting for agent response' }) }, 60000)
+        })
+      },
+
+      createAgent: async (name?, model?) => {
+        const displayNumber = sessionsRef.current.length + 1
+        const session = createSession(
+          model ?? configRef.current.defaultModel,
+          name ?? '',
+          displayNumber,
+          defaultFsAccess,
+          pancakeEnabled,
+          localEnabled,
+        )
+        setSessions(prev => [...prev, session])
+        return { id: session.id, name: session.name, model: session.model, status: session.status, isStreaming: false, messageCount: 0 }
+      },
+
+      deleteAgent: async (agentId) => {
+        if (agentId === callerSessionId) return { error: 'Cannot delete yourself' }
+        const target = sessionsRef.current.find(s => s.id === agentId)
+        if (!target) return { error: `No session with id "${agentId}"` }
+        if (target.isStreaming) return { error: `Agent "${target.name}" is currently streaming` }
+        if (suppressDeleteConfirmRef.current) {
+          removeSession(agentId)
+          return { success: true }
+        }
+        return new Promise((resolve, reject) => {
+          setAgentDeleteConfirm({
+            agentId,
+            agentName: target.name,
+            resolve: () => { removeSession(agentId); resolve({ success: true }) },
+            reject: () => reject({ error: 'User cancelled deletion' }),
+          })
+        })
+      },
+    }
   }
 
   function addVirtualFiles(files: VirtualFile[]) {
@@ -345,20 +462,27 @@ export default function App() {
     inputs[activeTileIndex]?.focus()
   }, [activeTileIndex])
 
-  const doSend = useCallback(async (sessionId: string, text: string) => {
+  const doSend = useCallback(async (sessionId: string, text: string, fromAgent?: string) => {
     setSessions(prev => prev.map(s => {
       if (s.id !== sessionId) return s
       return {
         ...s,
-        messages: [...s.messages, { role: 'user', content: text }],
+        messages: [...s.messages, { role: 'user', content: text, fromAgent }],
         isStreaming: true,
         status: 'Thinking...',
+        // mark unread if message is injected by another agent (human-sent messages clear unread via focusTile)
+        unread: fromAgent ? true : s.unread,
       }
     }))
     setStreamingContents(prev => ({ ...prev, [sessionId]: '' }))
 
     const session = sessionsRef.current.find(s => s.id === sessionId)!
-    const messagesWithNew = [...session.messages, { role: 'user' as const, content: text }]
+    const messagesWithNew = [...session.messages, { role: 'user' as const, content: text, fromAgent }]
+
+    const interopEnabled = isInteropEnabled(session)
+
+    const abort = new AbortController()
+    abortControllersRef.current.set(sessionId, abort)
 
     await streamMessage(
       configRef.current.apiKey,
@@ -370,18 +494,22 @@ export default function App() {
         setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: preview } : s))
       },
       (fullText) => {
+        abortControllersRef.current.delete(sessionId)
         setStreamingContents(prev => ({ ...prev, [sessionId]: '' }))
         setSessions(prev => prev.map(s => {
           if (s.id !== sessionId) return s
+          const isActive = sessionsRef.current.indexOf(s) === activeTileIndexRef.current
           return {
             ...s,
             messages: [...messagesWithNew, { role: 'assistant', content: fullText }],
             isStreaming: false,
             status: 'Done',
+            unread: !isActive,
           }
         }))
       },
       (err) => {
+        abortControllersRef.current.delete(sessionId)
         setStreamingContents(prev => ({ ...prev, [sessionId]: '' }))
         setSessions(prev => prev.map(s => {
           if (s.id !== sessionId) return s
@@ -406,6 +534,8 @@ export default function App() {
             s.id === sessionId ? { ...s, status: `Using tool: ${toolName}...` } : s
           ))
         },
+        agentInterop: interopEnabled ? buildAgentInteropCallbacks(sessionId) : null,
+        signal: abort.signal,
       },
     )
   }, [])
@@ -419,6 +549,7 @@ export default function App() {
     const targets = selectedIds.size > 0
       ? Array.from(new Set([...selectedIds, sessionId]))
       : [sessionId]
+    setSessions(prev => prev.map(s => targets.includes(s.id) ? { ...s, unread: false } : s))
     for (const id of targets) {
       doSend(id, text)
     }
@@ -426,6 +557,7 @@ export default function App() {
 
   function focusTile(index: number) {
     setActiveTileIndex(index)
+    setSessions(prev => prev.map((s, i) => i === index && s.unread ? { ...s, unread: false } : s))
   }
 
   function handleReset() {
@@ -488,7 +620,22 @@ export default function App() {
           >
             LFS
           </button>
+          <button
+            className={`fs-quick-toggle${config.defaultAgentInteropEnabled ? ' fs-quick-toggle-on-aio' : ''}`}
+            onClick={toggleDefaultAgentInterop}
+            title={`Agent Interoperability (default): ${config.defaultAgentInteropEnabled ? 'enabled' : 'disabled'}`}
+          >
+            AIO
+          </button>
           <DefaultFsSelector value={defaultFsAccess} onChange={handleDefaultFsChange} />
+          <button
+            className="kill-btn"
+            onClick={killAllAgents}
+            title="Stop all streaming agents"
+            disabled={!sessions.some(s => s.isStreaming)}
+          >
+            ■
+          </button>
           <button className="reset-btn" onClick={handleReset} title="Reset everything">↺</button>
           <button className="cog-btn" onClick={() => setShowConfig(true)} title="Config (⚙)">⚙</button>
         </div>
@@ -532,6 +679,8 @@ export default function App() {
             onFocusTile={focusTile}
             onActiveInputChange={setActiveInputValue}
             onFsAccessChange={setFsAccess}
+            onAgentInteropChange={setAgentInteropEnabled}
+            defaultAgentInteropEnabled={config.defaultAgentInteropEnabled}
           />
         )}
       </main>
@@ -576,6 +725,28 @@ export default function App() {
             <div className="modal-actions">
               <button onClick={() => { virtualDeleteConfirm.resolve(false); setVirtualDeleteConfirm(null) }}>Cancel</button>
               <button className="btn-primary" onClick={() => { virtualDeleteConfirm.resolve(true); setVirtualDeleteConfirm(null) }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {agentDeleteConfirm && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h2>Delete agent "{agentDeleteConfirm.agentName}"?</h2>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text)', lineHeight: 1.6 }}>
+              An agent is requesting to close this session. This will permanently erase its chat history and cannot be undone.
+            </p>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '0.5rem', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                onChange={e => setSuppressDeleteConfirm(e.target.checked)}
+              />
+              Don't ask me again this session
+            </label>
+            <div className="modal-actions">
+              <button onClick={() => { agentDeleteConfirm.reject({ error: 'User cancelled deletion' }); setAgentDeleteConfirm(null) }}>Cancel</button>
+              <button className="btn-primary" onClick={() => { agentDeleteConfirm.resolve(); setAgentDeleteConfirm(null) }}>Delete</button>
             </div>
           </div>
         </div>

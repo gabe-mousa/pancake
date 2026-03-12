@@ -724,6 +724,75 @@ body {
   white-space: nowrap;
 }
 
+/* About page link cards */
+.about-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.about-link-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--brown-border);
+  border-radius: 6px;
+  background: var(--brown-faint);
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.about-link-card:hover {
+  background: #e0d0c0;
+  border-color: var(--brown-light);
+}
+
+.about-link-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--brown);
+  min-width: 60px;
+}
+
+.about-link-url {
+  font-size: 0.82rem;
+  color: var(--brown-light);
+}
+
+/* Pancake photo gallery */
+.pancake-gallery {
+  overflow: hidden;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.pancake-gallery-track {
+  display: flex;
+  gap: 12px;
+  animation: gallery-scroll 40s linear infinite;
+  width: max-content;
+}
+
+.pancake-gallery-track:hover {
+  animation-play-state: paused;
+}
+
+.pancake-gallery-img {
+  height: 200px;
+  width: auto;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--brown-border);
+}
+
+@keyframes gallery-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
 .how-to-note {
   background: var(--brown-faint);
   border-left: 3px solid var(--brown);

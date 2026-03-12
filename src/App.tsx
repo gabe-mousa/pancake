@@ -3,6 +3,7 @@ import TileGrid from './components/TileGrid'
 import ConfigModal from './components/ConfigModal'
 import NewSessionModal from './components/NewSessionModal'
 import HowToPage from './components/HowToPage'
+import AboutPage from './components/AboutPage'
 import NotepadWindow from './components/NotepadWindow'
 import NotepadPage from './components/NotepadPage'
 import FilesystemPage from './pages/FilesystemPage'
@@ -73,7 +74,7 @@ function createSession(model: string, name: string, displayNumber: number, fsAcc
   }
 }
 
-type Page = 'sessions' | 'how-to' | 'notepad' | 'filesystem'
+type Page = 'sessions' | 'how-to' | 'notepad' | 'filesystem' | 'about'
 
 const FS_LEVELS: FsAccess[] = ['none', 'read', 'read-write', 'read-write-delete']
 const FS_LABELS: Record<FsAccess, string> = {
@@ -447,16 +448,13 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <div className="app-header-left">
+          <img src="/pancakemainicon.png" alt="Pancake" style={{ height: 28, width: 'auto', display: 'block' }} />
           <span className="app-title">Pancake</span>
           <nav className="app-nav">
             <button
               className={`nav-btn${page === 'sessions' ? ' nav-btn-active' : ''}`}
               onClick={() => setPage('sessions')}
             >Sessions</button>
-            <button
-              className={`nav-btn${page === 'how-to' ? ' nav-btn-active' : ''}`}
-              onClick={() => setPage('how-to')}
-            >How To Use</button>
             <button
               className={`nav-btn${page === 'notepad' ? ' nav-btn-active' : ''}`}
               onClick={() => setPage('notepad')}
@@ -465,6 +463,14 @@ export default function App() {
               className={`nav-btn${page === 'filesystem' ? ' nav-btn-active' : ''}`}
               onClick={() => setPage('filesystem')}
             >Filesystem</button>
+            <button
+              className={`nav-btn${page === 'how-to' ? ' nav-btn-active' : ''}`}
+              onClick={() => setPage('how-to')}
+            >Docs</button>
+            <button
+              className={`nav-btn${page === 'about' ? ' nav-btn-active' : ''}`}
+              onClick={() => setPage('about')}
+            >About</button>
           </nav>
         </div>
         <div className="app-header-right">
@@ -489,7 +495,9 @@ export default function App() {
       </header>
 
       <main className="app-main">
-        {page === 'how-to' ? (
+        {page === 'about' ? (
+          <AboutPage />
+        ) : page === 'how-to' ? (
           <HowToPage />
         ) : page === 'notepad' ? (
           <NotepadPage content={notepadContent} onChange={setNotepadContent} toggleHotkey={config.hotkeys.toggleNotepad} />

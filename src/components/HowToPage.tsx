@@ -6,6 +6,12 @@ export default function HowToPage() {
         <ul>
           <li><a href="#what-is-pancake">What is Pancake?</a></li>
           <li><a href="#getting-started">Getting started</a></li>
+          <li><a href="#authentication">Authentication</a>
+            <ul>
+              <li><a href="#auth-api-key">API Key</a></li>
+              <li><a href="#auth-cybertron">Cybertron</a></li>
+            </ul>
+          </li>
           <li><a href="#session-tiles">Session tiles</a>
             <ul>
               <li><a href="#claude-code-sessions">Claude Code sessions</a></li>
@@ -55,10 +61,36 @@ export default function HowToPage() {
         <section id="getting-started">
           <h2>Getting started</h2>
           <ol>
-            <li>Click <strong>⚙</strong> (top right) to open Config. Choose an auth mode (<strong>API Key</strong> for a standard Anthropic key, or <strong>Cybertron</strong> for devbox gateway access), enter your credentials, choose a default model, then click <strong>Save</strong>.</li>
+            <li>Click <strong>⚙</strong> (top right) to open Config. Choose an <strong>Auth Mode</strong> — <strong>API Key</strong> or <strong>Cybertron</strong> (see <a href="#authentication">Authentication</a> below) — enter your credentials if required, choose a default model, and click <strong>Save</strong>.</li>
             <li>Click <strong>+</strong> (bottom right) or press <code>Ctrl+Shift+N</code> to create a new session. Choose a session type — <strong>Chat</strong> for a standard model conversation, or <strong>Claude Code</strong> for a full terminal running the Claude Code CLI. Give it a name; Chat sessions also let you pick a model, Claude Code sessions let you optionally set a working directory. Press <strong>Enter</strong> or click <strong>Create</strong>.</li>
             <li>Click a tile to focus it, then type in the chat input and press <strong>Enter</strong> to send.</li>
           </ol>
+        </section>
+
+        <section id="authentication">
+          <h2>Authentication</h2>
+          <p>
+            Pancake supports two auth modes, selectable in <strong>Config (⚙)</strong> under <strong>Auth Mode</strong>.
+          </p>
+
+          <h3 id="auth-api-key">API Key</h3>
+          <p>
+            The default mode. Enter your Anthropic API key (starts with <code>sk-ant-</code>) in Config. API calls go directly from your browser to the Anthropic API — your key is stored only in <code>localStorage</code> and never sent anywhere else.
+          </p>
+
+          <h3 id="auth-cybertron">Cybertron</h3>
+          <p>
+            An alternative auth mode that routes API calls through a Cybertron gateway instead of directly to Anthropic. No API key is needed — authentication uses the credentials from your devbox environment.
+          </p>
+          <ul>
+            <li>Start Pancake from inside a devbox shell. The shell sets the <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, and any required custom headers as environment variables that the Pancake server reads automatically.</li>
+            <li>In Config, switch <strong>Auth Mode</strong> to <strong>Cybertron</strong>. The API key field disappears — credentials come from the server environment instead.</li>
+            <li>All API requests are proxied through <code>POST /api/v1/messages</code> on Pancake's local Express server, which forwards them to the gateway with the correct auth headers. The browser never contacts the gateway directly.</li>
+            <li>If Pancake is not running in a devbox shell (i.e. <code>ANTHROPIC_BASE_URL</code> is not set), requests will return a <code>503</code> error and Claude will not respond.</li>
+          </ul>
+          <p className="how-to-note">
+            <strong>Note:</strong> Auth mode is stored in <code>localStorage</code> and persists across page refreshes. If you switch machines or leave your devbox session, switch back to API Key mode to avoid failed requests.
+          </p>
         </section>
 
         <section id="session-tiles">

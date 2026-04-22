@@ -26,7 +26,7 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 ## Requirements
 
 - Node.js 18+
-- An [Anthropic API key](https://console.anthropic.com/) — or a Cybertron devbox shell for DoorDash internal access
+- An [Anthropic API key](https://console.anthropic.com/) — or a Cybertron devbox shell for gateway access
 
 ## Usage
 

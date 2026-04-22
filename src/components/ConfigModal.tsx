@@ -110,7 +110,7 @@ export default function ConfigModal({ config, onSave, onClose }: Props) {
                   transition: 'background 0.15s, color 0.15s',
                 }}
               >
-                {mode === 'api-key' ? 'API Key' : 'DoorDash (Cybertron)'}
+                {mode === 'api-key' ? 'API Key' : 'Cybertron'}
               </button>
             ))}
           </div>

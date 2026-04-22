@@ -8,7 +8,7 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import Tile from './Tile'
-import type { Session, FsAccess } from '../types'
+import type { Session, FsAccess, Hotkeys } from '../types'
 
 interface Props {
   sessions: Session[]
@@ -17,6 +17,7 @@ interface Props {
   selectedIds: Set<string>
   activeInputValue: string
   expandHotkey: string
+  hotkeys: Hotkeys
   onSendMessage: (sessionId: string, text: string) => void
   onRemove: (sessionId: string) => void
   onRename: (sessionId: string, name: string) => void
@@ -28,7 +29,7 @@ interface Props {
   defaultAgentInteropEnabled: boolean
 }
 
-export default function TileGrid({ sessions, streamingContents, activeTileIndex, selectedIds, activeInputValue, expandHotkey, onSendMessage, onRemove, onRename, onReorder, onFocusTile, onActiveInputChange, onFsAccessChange, onAgentInteropChange, defaultAgentInteropEnabled }: Props) {
+export default function TileGrid({ sessions, streamingContents, activeTileIndex, selectedIds, activeInputValue, expandHotkey, hotkeys, onSendMessage, onRemove, onRename, onReorder, onFocusTile, onActiveInputChange, onFsAccessChange, onAgentInteropChange, defaultAgentInteropEnabled }: Props) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   function handleDragEnd(event: DragEndEvent) {
@@ -54,6 +55,7 @@ export default function TileGrid({ sessions, streamingContents, activeTileIndex,
               activeInputValue={i === activeTileIndex ? activeInputValue : null}
               mirroredInputValue={i !== activeTileIndex && selectedIds.has(session.id) ? activeInputValue : null}
               expandHotkey={expandHotkey}
+              hotkeys={hotkeys}
               onSendMessage={onSendMessage}
               onRemove={onRemove}
               onRename={onRename}

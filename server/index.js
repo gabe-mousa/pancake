@@ -276,7 +276,7 @@ wss.on('connection', (ws) => {
 
     if (msg.type === 'create') {
       sessionId = msg.sessionId
-      const claudePath = process.env.HOME + '/.devbox/ai/claude/claude'
+      const claudePath = process.env.CLAUDE_PATH || 'claude'
       const cwd = msg.cwd ? path.resolve(msg.cwd.replace(/^~/, process.env.HOME || '')) : process.cwd()
 
       let ptyProcess

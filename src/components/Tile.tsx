@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import ChatWindow from './ChatWindow'
-import type { Session, FsAccess } from '../types'
+import TerminalTile from './TerminalTile'
+import type { Session, FsAccess, Hotkeys } from '../types'
 
 interface Props {
   session: Session
@@ -12,6 +13,7 @@ interface Props {
   activeInputValue: string | null
   mirroredInputValue: string | null
   expandHotkey: string
+  hotkeys: Hotkeys
   onSendMessage: (sessionId: string, text: string) => void
   onRemove: (sessionId: string) => void
   onRename: (sessionId: string, name: string) => void
@@ -50,7 +52,7 @@ function hotkeyMatches(e: KeyboardEvent, combo: string): boolean {
   )
 }
 
-export default function Tile({ session, streamingContent, isActive, isSelected, activeInputValue, mirroredInputValue, expandHotkey, onSendMessage, onRemove, onRename, onFocus, onActiveInputChange, onFsAccessChange, onAgentInteropChange, defaultAgentInteropEnabled, unread }: Props) {
+export default function Tile({ session, streamingContent, isActive, isSelected, activeInputValue, mirroredInputValue, expandHotkey, hotkeys, onSendMessage, onRemove, onRename, onFocus, onActiveInputChange, onFsAccessChange, onAgentInteropChange, defaultAgentInteropEnabled, unread }: Props) {
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState(session.name)
   const [expanded, setExpanded] = useState(false)
@@ -71,8 +73,11 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
     setEditingName(false)
   }
 
+  const isCC = session.sessionType === 'claude-code'
+
   const tileClass = [
     'tile',
+    isCC ? 'tile-claude-code' : '',
     expanded ? 'tile-expanded' : '',
     isActive ? 'tile-active' : '',
     isSelected ? 'tile-selected' : '',
@@ -115,7 +120,7 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
           }
           return next
         })
-      } else if (e.key === 'Escape' && expanded) {
+      } else if (e.key === 'Escape' && expanded && !isCC) {
         e.preventDefault()
         setExpanded(false)
         setTimeout(() => {
@@ -176,36 +181,41 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
             <span className="tile-model-inline">{session.model}</span>
           </span>
         )}
-        <div className="tile-fs-indicators">
-          {session.pancakeEnabled && (
-            <span className="tile-fs-dot tile-fs-dot-pfs" title="Pancake's Filesystem was enabled when this session was created" />
-          )}
-          {session.localEnabled && (
-            <span className="tile-fs-dot tile-fs-dot-lfs" title="Local Filesystem was enabled when this session was created" />
-          )}
-        </div>
-        <div className="fs-badge-wrapper" onClick={e => e.stopPropagation()}>
-          <button
-            className={fsBadgeClass}
-            onClick={() => setShowFsMenu(prev => !prev)}
-            title="Set filesystem access level"
-          >
-            {FS_LABELS[fsAccess]}
-          </button>
-          {showFsMenu && (
-            <div className="fs-menu">
-              {FS_LEVELS.map(level => (
-                <button
-                  key={level}
-                  className={`fs-menu-item${level === fsAccess ? ' fs-menu-item-active' : ''}`}
-                  onClick={() => { onFsAccessChange(session.id, level); setShowFsMenu(false) }}
-                >
-                  {FS_LABELS[level]}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {isCC && <span className="tile-cc-badge">≥_</span>}
+        {!isCC && (
+          <div className="tile-fs-indicators">
+            {session.pancakeEnabled && (
+              <span className="tile-fs-dot tile-fs-dot-pfs" title="Pancake's Filesystem was enabled when this session was created" />
+            )}
+            {session.localEnabled && (
+              <span className="tile-fs-dot tile-fs-dot-lfs" title="Local Filesystem was enabled when this session was created" />
+            )}
+          </div>
+        )}
+        {!isCC && (
+          <div className="fs-badge-wrapper" onClick={e => e.stopPropagation()}>
+            <button
+              className={fsBadgeClass}
+              onClick={() => setShowFsMenu(prev => !prev)}
+              title="Set filesystem access level"
+            >
+              {FS_LABELS[fsAccess]}
+            </button>
+            {showFsMenu && (
+              <div className="fs-menu">
+                {FS_LEVELS.map(level => (
+                  <button
+                    key={level}
+                    className={`fs-menu-item${level === fsAccess ? ' fs-menu-item-active' : ''}`}
+                    onClick={() => { onFsAccessChange(session.id, level); setShowFsMenu(false) }}
+                  >
+                    {FS_LABELS[level]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <div className="fs-badge-wrapper" onClick={e => e.stopPropagation()}>
           <button
             className={`fs-badge ${effectiveInteropEnabled ? 'fs-badge-aio' : 'fs-badge-none'}`}
@@ -243,16 +253,26 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
         {unread && <span className="tile-unread-dot" title="New response" />}
         {session.status || 'Idle'}
       </div>
-      <ChatWindow
-        messages={session.messages}
-        isStreaming={session.isStreaming}
-        streamingContent={streamingContent}
-        activeInputValue={activeInputValue}
-        mirroredInputValue={mirroredInputValue}
-        onSendMessage={text => onSendMessage(session.id, text)}
-        onFocus={onFocus}
-        onActiveInputChange={onActiveInputChange}
-      />
+      {isCC ? (
+        <TerminalTile
+          sessionId={session.id}
+          cwd={session.ccSessionCwd}
+          expanded={expanded}
+          isActive={isActive}
+          hotkeys={hotkeys}
+        />
+      ) : (
+        <ChatWindow
+          messages={session.messages}
+          isStreaming={session.isStreaming}
+          streamingContent={streamingContent}
+          activeInputValue={activeInputValue}
+          mirroredInputValue={mirroredInputValue}
+          onSendMessage={text => onSendMessage(session.id, text)}
+          onFocus={onFocus}
+          onActiveInputChange={onActiveInputChange}
+        />
+      )}
     </div>
   )
 }

@@ -17,6 +17,8 @@ export interface AgentMeta {
 
 export type FsAccess = 'none' | 'read' | 'read-write' | 'read-write-delete'
 
+export type SessionType = 'chat' | 'claude-code'
+
 export interface Session {
   id: string
   name: string
@@ -29,6 +31,8 @@ export interface Session {
   localEnabled: boolean
   agentInteropEnabled: boolean | null  // null = inherit from global default
   unread: boolean
+  sessionType: SessionType
+  ccSessionCwd?: string
 }
 
 export interface VirtualFile {
@@ -55,8 +59,11 @@ export interface Hotkeys {
   toggleNotepad: string
 }
 
+export type AuthMode = 'api-key' | 'cybertron'
+
 export interface Config {
   apiKey: string
+  authMode: AuthMode
   defaultModel: string
   hotkeys: Hotkeys
   defaultAgentInteropEnabled: boolean

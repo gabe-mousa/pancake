@@ -13,6 +13,7 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 ## Features
 
 - **Multi-session grid** — run up to 4 sessions per row, each with its own model and conversation history
+- **Claude Code sessions** — spawn full xterm.js terminal tiles running a local Claude Code CLI process alongside chat sessions
 - **Layout modes** — switch between wide (4 columns) and tall (2 columns, larger tiles) from the nav bar
 - **Broadcasting** — select multiple tiles and send one message to all of them simultaneously
 - **Shared notepad** — a floating, resizable markdown scratchpad readable and writable by any agent or by you
@@ -21,22 +22,23 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 - **Local Filesystem (LFS)** — a bridge to a real directory on your machine, served by a local Express server Pancake starts automatically
 - **Drag and drop** — reorder session tiles by dragging
 - **Configurable hotkeys** — all keyboard shortcuts are remappable in the settings menu
+- **Flexible auth** — connect via Anthropic API key or a Cybertron devbox gateway
 - **No backend** — runs entirely in your browser; your API key is stored in `localStorage` and never leaves your machine
 
 ## Requirements
 
 - Node.js 18+
-- An [Anthropic API key](https://console.anthropic.com/)
+- An [Anthropic API key](https://console.anthropic.com/) — or a Cybertron devbox shell for gateway access
 
 ## Usage
 
 ### Getting started
 
 1. Run `npx pancake`
-2. Click **⚙** (top right) and enter your Anthropic API key
+2. Click **⚙** (top right) and enter your Anthropic API key (or set auth mode to Cybertron if using a devbox shell)
 3. Press **Ctrl+Shift+N** (or click **+**) to create a session
-4. Choose a name and model, then click **Create**
-5. Type in the chat input and press **Enter** to send
+4. Choose a session type (**Chat** or **Claude Code**), a name, and optionally a model or working directory, then click **Create**
+5. Type in the chat input and press **Enter** to send (Chat), or type directly in the terminal (Claude Code)
 
 ### Layout modes
 

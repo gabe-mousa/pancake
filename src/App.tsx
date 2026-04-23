@@ -81,6 +81,7 @@ function createSession(model: string, name: string, displayNumber: number, fsAcc
 }
 
 type Page = 'sessions' | 'how-to' | 'notepad' | 'filesystem' | 'about'
+type Layout = 'wide' | 'tall'
 
 const FS_LEVELS: FsAccess[] = ['none', 'read', 'read-write', 'read-write-delete']
 const FS_LABELS: Record<FsAccess, string> = {
@@ -149,6 +150,7 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [activeInputValue, setActiveInputValue] = useState('')
   const [page, setPage] = useState<Page>('sessions')
+  const [layout, setLayout] = useState<Layout>('wide')
   const [notepadContent, setNotepadContent] = useState('')
   const [showNotepadWindow, setShowNotepadWindow] = useState(false)
   const [notepadPos, setNotepadPos] = useState({ x: 80, y: 80 })
@@ -641,6 +643,28 @@ export default function App() {
             >About</button>
           </nav>
         </div>
+        {page === 'sessions' && (
+          <div className="layout-toggle" title="Switch layout">
+            <button
+              className={`layout-btn${layout === 'wide' ? ' layout-btn-active' : ''}`}
+              onClick={() => setLayout('wide')}
+              title="Wide layout: 4 columns"
+            >
+              <span className="layout-icon layout-icon-wide">
+                <span/><span/><span/><span/>
+              </span>
+            </button>
+            <button
+              className={`layout-btn${layout === 'tall' ? ' layout-btn-active' : ''}`}
+              onClick={() => setLayout('tall')}
+              title="Tall layout: 2 columns"
+            >
+              <span className="layout-icon layout-icon-tall">
+                <span/><span/>
+              </span>
+            </button>
+          </div>
+        )}
         <div className="app-header-right">
           <button
             className={`fs-quick-toggle${pancakeEnabled ? ' fs-quick-toggle-on-pfs' : ''}`}
@@ -708,6 +732,7 @@ export default function App() {
             selectedIds={selectedIds}
             activeInputValue={activeInputValue}
             expandHotkey={config.hotkeys.expandTile}
+            layout={layout}
             hotkeys={config.hotkeys}
             onSendMessage={sendMessage}
             onRemove={removeSession}

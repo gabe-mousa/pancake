@@ -14,14 +14,16 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 
 - **Multi-session grid** — run up to 4 sessions per row, each with its own model and conversation history
 - **Claude Code sessions** — spawn full xterm.js terminal tiles running a local Claude Code CLI process alongside chat sessions
+- **Layout modes** — switch between wide (4 columns) and tall (2 columns, larger tiles) from the nav bar
 - **Broadcasting** — select multiple tiles and send one message to all of them simultaneously
-- **Agent interoperability** — agents can list, message, read, create, and delete other sessions through tool calls
-- **Filesystems** — virtual in-browser filesystem (PFS) and a local filesystem bridge (LFS) with per-session access control
-- **Agentic tool loop** — Claude can read and write a shared notepad as a tool, enabling inter-agent coordination
-- **Shared notepad** — a floating markdown scratchpad readable and writable by any agent or by you
+- **Shared notepad** — a floating, resizable markdown scratchpad readable and writable by any agent or by you
+- **Agent interoperability** — agents can list, message, create, and delete other sessions autonomously via tool calls
+- **Pancake's Filesystem (PFS)** — an in-browser virtual filesystem; upload files and folders for agents to read and write
+- **Local Filesystem (LFS)** — a bridge to a real directory on your machine, served by a local Express server Pancake starts automatically
 - **Drag and drop** — reorder session tiles by dragging
 - **Configurable hotkeys** — all keyboard shortcuts are remappable in the settings menu
 - **Flexible auth** — connect via Anthropic API key or a Cybertron devbox gateway
+- **No backend** — runs entirely in your browser; your API key is stored in `localStorage` and never leaves your machine
 
 ## Requirements
 
@@ -33,10 +35,17 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 ### Getting started
 
 1. Run `npx pancake`
-2. Click the cog in the top right and enter your Anthropic API key (or set auth mode to Cybertron if using a devbox shell)
+2. Click **⚙** (top right) and enter your Anthropic API key (or set auth mode to Cybertron if using a devbox shell)
 3. Press **Ctrl+Shift+N** (or click **+**) to create a session
 4. Choose a session type (**Chat** or **Claude Code**), a name, and optionally a model or working directory, then click **Create**
 5. Type in the chat input and press **Enter** to send (Chat), or type directly in the terminal (Claude Code)
+
+### Layout modes
+
+Use the layout toggle in the nav bar to switch between two grid modes:
+
+- **Wide** (default) — 4 columns, compact tile height; fit as many sessions as possible on screen
+- **Tall** — 2 columns, tiles fill roughly half the viewport height; better for reading longer conversations
 
 ### Keyboard shortcuts
 
@@ -49,19 +58,41 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 | Expand focused tile | `Ctrl+Shift+F` |
 | Toggle notepad window | `Ctrl+Shift+X` |
 
-All shortcuts are configurable in the settings menu in the top right.
+All shortcuts are configurable in the settings menu.
 
 ### Broadcasting
 
-Select multiple tiles using `Shift+Arrow keys` — selected tiles are highlighted. Typing and sending a message while tiles are selected delivers that message to all selected sessions at once.
+Select multiple tiles using `Shift+Arrow keys` — selected tiles are highlighted in yellow. Typing and sending a message while tiles are selected delivers that message to all selected sessions at once.
 
 ### Notepad
 
-The shared notepad (`Ctrl+Shift+X`) is a floating markdown editor visible to all sessions. Agents can read and write it as a tool during their responses, making it useful for passing context between agents, accumulating results from parallel runs, or keeping shared state across sessions.
+The shared notepad (`Ctrl+Shift+X`) is a floating, resizable markdown editor visible to all sessions. Drag any edge or corner to resize it. Agents can read and write it as a tool during their responses, making it useful for passing context between agents, accumulating results from parallel runs, or keeping shared state across sessions.
+
+The full-page Notepad editor is also accessible from the **Notepad** nav link.
+
+### Filesystems
+
+Pancake provides two independent filesystems:
+
+**PFS (Pancake's Filesystem)** — an in-memory virtual filesystem. Upload files and folders for agents to access. Files live only while the page is open; nothing is read from or written to your machine. Toggle with the **PFS** button (green when on).
+
+**LFS (Local Filesystem)** — a bridge to a real directory on your machine served by a local Express server Pancake starts on port 4174. Set a root directory on the Filesystem page; agents are scoped to it. Access level is controlled per-session by the **FS badge** on each tile (off / read / r/w / r/w/d). Toggle with the **LFS** button (blue when on).
+
+### Agent interoperability
+
+When enabled (the **AIO** button, lavender when on), agents can use five tools to interact with other sessions:
+
+- `list_agents` — list all open sessions
+- `read_agent_chat(id)` — read another session's full conversation history
+- `send_message_to_agent(id, message, await_response?)` — inject a message into another session
+- `create_agent(name?, model?)` — spawn a new session tile
+- `delete_agent(id)` — close and erase another session (requires confirmation)
+
+Interop is enabled by default and can be toggled globally from the header or per-session from each tile's AIO badge.
 
 ### Models
 
-Each session can use a different model. Currently supports Anthropic models (requires an [Anthropic API key](https://console.anthropic.com/)). Select from the dropdown when creating a session or in the settings menu.
+Each session can use a different model. Select from the dropdown when creating a session. The default model for new sessions is set in **⚙ Config**.
 
 ## Local development
 

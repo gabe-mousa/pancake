@@ -8,10 +8,11 @@ import NotepadWindow from './components/NotepadWindow'
 import NotepadPage from './components/NotepadPage'
 import FilesystemPage from './pages/FilesystemPage'
 import { streamMessage } from './anthropic'
-import type { Session, Config, FsAccess, VirtualFile, AgentMeta } from './types'
+import type { Session, Config, FsAccess, VirtualFile, AgentMeta, SessionType } from './types'
 
 const DEFAULT_CONFIG: Config = {
   apiKey: '',
+  authMode: 'api-key',
   defaultModel: 'claude-sonnet-4-6',
   defaultAgentInteropEnabled: true,
   hotkeys: {
@@ -61,7 +62,7 @@ function eventMatchesHotkey(e: KeyboardEvent, combo: string): boolean {
   )
 }
 
-function createSession(model: string, name: string, displayNumber: number, fsAccess: FsAccess, pancakeEnabled: boolean, localEnabled: boolean): Session {
+function createSession(model: string, name: string, displayNumber: number, fsAccess: FsAccess, pancakeEnabled: boolean, localEnabled: boolean, sessionType: SessionType = 'chat', ccSessionCwd?: string): Session {
   return {
     id: crypto.randomUUID(),
     name: name || `Session ${displayNumber}`,
@@ -74,6 +75,8 @@ function createSession(model: string, name: string, displayNumber: number, fsAcc
     localEnabled,
     agentInteropEnabled: null,
     unread: false,
+    sessionType,
+    ccSessionCwd,
   }
 }
 
@@ -236,9 +239,16 @@ export default function App() {
     })
   }
 
-  function addSession(model: string, name: string) {
-    const session = createSession(model, name, sessions.length + 1, defaultFsAccess, pancakeEnabled, localEnabled)
+  function addSession(model: string, name: string, sessionType: SessionType = 'chat', cwd?: string) {
+    const session = createSession(model, name, sessions.length + 1, defaultFsAccess, pancakeEnabled, localEnabled, sessionType, cwd)
     setSessions(prev => [...prev, session])
+    setActiveTileIndex(sessions.length)
+    // For chat sessions, also focus directly in case activeTileIndex didn't change (e.g. first session)
+    if (sessionType !== 'claude-code') {
+      setTimeout(() => {
+        document.querySelector<HTMLElement>(`[data-session-id="${session.id}"] .chat-input`)?.focus()
+      }, 50)
+    }
   }
 
   function removeSession(id: string) {
@@ -288,6 +298,7 @@ export default function App() {
       readAgentChat: (agentId) => {
         const s = sessionsRef.current.find(s => s.id === agentId)
         if (!s) return { error: `No session with id "${agentId}"` }
+        if (s.sessionType === 'claude-code') return { note: `"${s.name}" is a Claude Code terminal session. Use send_message_to_agent to inject input into its terminal.` }
         return s.messages
       },
 
@@ -295,8 +306,23 @@ export default function App() {
         if (agentId === callerSessionId) return { error: 'Cannot message yourself' }
         const target = sessionsRef.current.find(s => s.id === agentId)
         if (!target) return { error: `No session with id "${agentId}"` }
-        if (target.isStreaming) return { error: `Agent "${target.name}" is currently busy (streaming). Check list_agents and retry when isStreaming is false.` }
         const agentName = target.name
+
+        // Claude Code terminal sessions: inject text directly into the PTY
+        if (target.sessionType === 'claude-code') {
+          try {
+            await fetch('http://127.0.0.1:4174/terminal/input', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionId: agentId, data: message + '\n' }),
+            })
+          } catch (e) {
+            return { error: `Failed to inject into terminal "${agentName}": ${(e as Error).message}` }
+          }
+          return { queued: true, agentName }
+        }
+
+        if (target.isStreaming) return { error: `Agent "${target.name}" is currently busy (streaming). Check list_agents and retry when isStreaming is false.` }
         const callerName = sessionsRef.current.find(s => s.id === callerSessionId)?.name ?? 'Another agent'
         doSend(agentId, message, callerName)
         if (!awaitResponse) return { queued: true, agentName }
@@ -320,15 +346,18 @@ export default function App() {
         })
       },
 
-      createAgent: async (name?, model?) => {
+      createAgent: async (name?, model?, sessionType = 'chat', cwd?) => {
         const displayNumber = sessionsRef.current.length + 1
+        const effectiveModel = sessionType === 'claude-code' ? 'claude code' : (model ?? configRef.current.defaultModel)
         const session = createSession(
-          model ?? configRef.current.defaultModel,
+          effectiveModel,
           name ?? '',
           displayNumber,
           defaultFsAccess,
           pancakeEnabled,
           localEnabled,
+          sessionType,
+          cwd,
         )
         setSessions(prev => [...prev, session])
         return { id: session.id, name: session.name, model: session.model, status: session.status, isStreaming: false, messageCount: 0 }
@@ -385,7 +414,8 @@ export default function App() {
     function onKeyDown(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement).tagName
       const isChatInput = (e.target as HTMLElement).classList.contains('chat-input')
-      if ((tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') && !isChatInput) return
+      const isXtermHelper = (e.target as HTMLElement).classList.contains('xterm-helper-textarea')
+      if ((tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') && !isChatInput && !isXtermHelper) return
 
       const { hotkeys } = configRef.current
       const sessions = sessionsRef.current
@@ -460,8 +490,11 @@ export default function App() {
 
   useEffect(() => {
     setActiveInputValue('')
-    const inputs = document.querySelectorAll<HTMLInputElement>('.chat-input')
-    inputs[activeTileIndex]?.focus()
+    const activeSession = sessionsRef.current[activeTileIndex]
+    if (activeSession && activeSession.sessionType !== 'claude-code') {
+      const tile = document.querySelector<HTMLElement>(`[data-session-id="${activeSession.id}"]`)
+      tile?.querySelector<HTMLInputElement>('.chat-input')?.focus()
+    }
   }, [activeTileIndex])
 
   const doSend = useCallback(async (sessionId: string, text: string, fromAgent?: string) => {
@@ -488,6 +521,7 @@ export default function App() {
 
     await streamMessage(
       configRef.current.apiKey,
+      configRef.current.authMode ?? 'api-key',
       session.model,
       messagesWithNew,
       (partial) => {
@@ -543,7 +577,9 @@ export default function App() {
   }, [])
 
   const sendMessage = useCallback(async (sessionId: string, text: string) => {
-    if (!configRef.current.apiKey) {
+    const targetSession = sessionsRef.current.find(s => s.id === sessionId)
+    if (targetSession?.sessionType === 'claude-code') return
+    if (configRef.current.authMode !== 'cybertron' && !configRef.current.apiKey) {
       setShowConfig(true)
       return
     }
@@ -697,6 +733,7 @@ export default function App() {
             activeInputValue={activeInputValue}
             expandHotkey={config.hotkeys.expandTile}
             layout={layout}
+            hotkeys={config.hotkeys}
             onSendMessage={sendMessage}
             onRemove={removeSession}
             onRename={renameSession}

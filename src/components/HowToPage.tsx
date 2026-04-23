@@ -6,8 +6,15 @@ export default function HowToPage() {
         <ul>
           <li><a href="#what-is-pancake">What is Pancake?</a></li>
           <li><a href="#getting-started">Getting started</a></li>
+          <li><a href="#authentication">Authentication</a>
+            <ul>
+              <li><a href="#auth-api-key">API Key</a></li>
+              <li><a href="#auth-cybertron">Cybertron</a></li>
+            </ul>
+          </li>
           <li><a href="#session-tiles">Session tiles</a>
             <ul>
+              <li><a href="#claude-code-sessions">Claude Code sessions</a></li>
               <li><a href="#interop-badge">AIO badge</a></li>
               <li><a href="#fs-badge">FS access badge</a></li>
               <li><a href="#pfs-lfs-dots">PFS / LFS indicators</a></li>
@@ -55,10 +62,36 @@ export default function HowToPage() {
         <section id="getting-started">
           <h2>Getting started</h2>
           <ol>
-            <li>Click <strong>⚙</strong> (top right) to open Config. Enter your Anthropic API key and choose a default model, then click <strong>Save</strong>.</li>
-            <li>Click <strong>+</strong> (bottom right) or press <code>Ctrl+Shift+N</code> to create a new session. Give it an optional name, pick a model, and press <strong>Enter</strong> or click <strong>Create</strong>.</li>
+            <li>Click <strong>⚙</strong> (top right) to open Config. Choose an <strong>Auth Mode</strong> — <strong>API Key</strong> or <strong>Cybertron</strong> (see <a href="#authentication">Authentication</a> below) — enter your credentials if required, choose a default model, and click <strong>Save</strong>.</li>
+            <li>Click <strong>+</strong> (bottom right) or press <code>Ctrl+Shift+N</code> to create a new session. Choose a session type — <strong>Chat</strong> for a standard model conversation, or <strong>Claude Code</strong> for a full terminal running the Claude Code CLI. Give it a name; Chat sessions also let you pick a model, Claude Code sessions let you optionally set a working directory. Press <strong>Enter</strong> or click <strong>Create</strong>.</li>
             <li>Click a tile to focus it, then type in the chat input and press <strong>Enter</strong> to send.</li>
           </ol>
+        </section>
+
+        <section id="authentication">
+          <h2>Authentication</h2>
+          <p>
+            Pancake supports two auth modes, selectable in <strong>Config (⚙)</strong> under <strong>Auth Mode</strong>.
+          </p>
+
+          <h3 id="auth-api-key">API Key</h3>
+          <p>
+            The default mode. Enter your Anthropic API key (starts with <code>sk-ant-</code>) in Config. API calls go directly from your browser to the Anthropic API — your key is stored only in <code>localStorage</code> and never sent anywhere else.
+          </p>
+
+          <h3 id="auth-cybertron">Cybertron</h3>
+          <p>
+            An alternative auth mode that routes API calls through a Cybertron gateway instead of directly to Anthropic. No API key is needed — authentication uses the credentials from your devbox environment.
+          </p>
+          <ul>
+            <li>Start Pancake from inside a devbox shell. The shell sets the <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, and any required custom headers as environment variables that the Pancake server reads automatically.</li>
+            <li>In Config, switch <strong>Auth Mode</strong> to <strong>Cybertron</strong>. The API key field disappears — credentials come from the server environment instead.</li>
+            <li>All API requests are proxied through <code>POST /api/v1/messages</code> on Pancake's local Express server, which forwards them to the gateway with the correct auth headers. The browser never contacts the gateway directly.</li>
+            <li>If Pancake is not running in a devbox shell (i.e. <code>ANTHROPIC_BASE_URL</code> is not set), requests will return a <code>503</code> error and Claude will not respond.</li>
+          </ul>
+          <p className="how-to-note">
+            <strong>Note:</strong> Auth mode is stored in <code>localStorage</code> and persists across page refreshes. If you switch machines or leave your devbox session, switch back to API Key mode to avoid failed requests.
+          </p>
         </section>
 
         <section id="session-tiles">
@@ -73,6 +106,20 @@ export default function HowToPage() {
             <li>Drag the <strong>⠿</strong> handle to reorder tiles in the grid.</li>
             <li>Click <strong>✕</strong> to close a session permanently.</li>
             <li>The grid layout is switchable — see <a href="#layout">Layout modes</a> below.</li>
+          </ul>
+
+          <h3 id="claude-code-sessions">Claude Code sessions</h3>
+          <p>
+            Claude Code sessions run the local Claude Code CLI (<code>~/.devbox/ai/claude/claude</code>) inside a full PTY terminal rendered with xterm.js. They behave like a real terminal tab embedded in the grid.
+          </p>
+          <ul>
+            <li>Identified by the <strong>≥_</strong> badge in the tile header.</li>
+            <li>All input goes directly to the PTY — type in the terminal just as you would in a dedicated terminal window.</li>
+            <li>Pancake hotkeys (navigation, expand, etc.) still work: they are intercepted before reaching the PTY so they do not interfere with the terminal session.</li>
+            <li>Click <strong>⊞</strong> or press <code>Ctrl+Shift+F</code> to expand — the terminal resizes automatically to fill the screen.</li>
+            <li>Claude Code sessions have an <strong>AIO badge</strong> and can participate in agent interoperability (see below). Messages sent via <code>send_message_to_agent</code> are injected directly into the terminal as typed input.</li>
+            <li>Claude Code sessions do <strong>not</strong> have an FS access badge or PFS/LFS dot indicators — filesystem access is managed by Claude Code itself.</li>
+            <li>Click <strong>✕</strong> to close the tile — this kills the underlying PTY process immediately.</li>
           </ul>
 
           <h3 id="interop-badge">AIO badge</h3>
@@ -96,7 +143,7 @@ export default function HowToPage() {
             <li><strong>FS: r/w/d</strong> — agent can also permanently delete files (use with care)</li>
           </ul>
           <p>
-            This only affects local filesystem (LFS) access — it has no effect on Pancake's virtual filesystem (PFS).
+            This only affects local filesystem (LFS) access — it has no effect on Pancake's virtual filesystem (PFS). Claude Code session tiles do not show this badge.
           </p>
 
           <h3 id="pfs-lfs-dots">PFS / LFS session indicators</h3>
@@ -108,7 +155,7 @@ export default function HowToPage() {
             <li><strong>Blue dot (LFS)</strong> — Local Filesystem was enabled when this session was created</li>
           </ul>
           <p>
-            These are read-only indicators. They record what was active at creation time so you always know the intended context of that session. The current FS access level is still controlled by the FS badge.
+            These are read-only indicators. They record what was active at creation time so you always know the intended context of that session. The current FS access level is still controlled by the FS badge. Claude Code session tiles do not show these dots.
           </p>
         </section>
 
@@ -209,16 +256,16 @@ export default function HowToPage() {
           <p>When agent interop is enabled for a session, five tools become available:</p>
           <ul>
             <li>
-              <code>list_agents</code> — returns a list of all other open sessions with their id, name, model, status, streaming state, and message count. This is the starting point for any inter-agent workflow: the agent uses the name to identify the right target and the id to call the other tools.
+              <code>list_agents</code> — returns a list of all other open sessions with their id, name, model (<code>claude code</code> for Claude Code sessions), session type, status, streaming state, and message count. This is the starting point for any inter-agent workflow: the agent uses the name to identify the right target and the id to call the other tools.
             </li>
             <li>
-              <code>read_agent_chat(agent_id)</code> — returns the full conversation history of another session as an array of <code>{'{role, content}'}</code> messages. Fully unrestricted — any session can read any other session's history.
+              <code>read_agent_chat(agent_id)</code> — returns the full conversation history of another session as an array of <code>{'{role, content}'}</code> messages. For Claude Code sessions, returns a descriptive note instead of a message array (the terminal history is not accessible as structured chat).
             </li>
             <li>
-              <code>send_message_to_agent(agent_id, message, await_response?)</code> — injects a user-role message into another session, triggering that agent to respond. By default this is fire-and-forget: the tool returns immediately and both sessions run in parallel. Set <code>await_response: true</code> to block until the target agent finishes responding, then receive its reply text directly in the tool result. Cannot send to self or to a session that is currently streaming.
+              <code>send_message_to_agent(agent_id, message, await_response?)</code> — injects a user-role message into another session, triggering that agent to respond. By default this is fire-and-forget: the tool returns immediately and both sessions run in parallel. Set <code>await_response: true</code> to block until the target agent finishes responding, then receive its reply text directly in the tool result. For Claude Code sessions, the message is injected directly into the terminal as typed input (as if the user typed it). Cannot send to self or to a session that is currently streaming.
             </li>
             <li>
-              <code>create_agent(name?, model?)</code> — creates a new session tile in the workspace. <code>name</code> defaults to "Session N" and <code>model</code> defaults to the app's configured default. Returns the new session's id, name, and model so the agent can immediately start working with it.
+              <code>create_agent(name?, model?, session_type?, cwd?)</code> — creates a new session tile in the workspace. <code>name</code> defaults to "Session N" and <code>model</code> defaults to the app's configured default. Set <code>session_type</code> to <code>'claude-code'</code> to spawn a Claude Code terminal session; optionally provide <code>cwd</code> as the working directory for the new terminal. Returns the new session's id, name, and model so the agent can immediately start working with it.
             </li>
             <li>
               <code>delete_agent(agent_id)</code> — closes another session and permanently erases its chat history. Cannot delete self or a currently streaming session. Triggers a confirmation dialog (see below). Cannot be undone.

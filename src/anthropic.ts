@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { Message, FsAccess, VirtualFile, AgentMeta } from './types'
+import type { AuthMode, Message, FsAccess, VirtualFile, AgentMeta, SessionType } from './types'
 
 const FS_SERVER = 'http://127.0.0.1:4174'
+const CYBERTRON_PROXY = 'http://127.0.0.1:4174/api'
 
 // ── Tool definitions ──────────────────────────────────────────────────────────
 
@@ -134,12 +135,14 @@ const AGENT_INTEROP_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'create_agent',
-    description: 'Create a new agent session in the Pancake workspace.',
+    description: 'Create a new agent session in the Pancake workspace. Use session_type "claude-code" to open a real Claude Code terminal session instead of a chat session.',
     input_schema: {
       type: 'object',
       properties: {
         name: { type: 'string', description: 'Name for the new session. Defaults to "Session N".' },
-        model: { type: 'string', description: 'Model to use. Defaults to the app default model.' },
+        model: { type: 'string', description: 'Model to use for chat sessions. Ignored for claude-code sessions.' },
+        session_type: { type: 'string', enum: ['chat', 'claude-code'], description: 'Session type. "chat" (default) creates a normal chat session. "claude-code" opens a PTY terminal running the Claude Code CLI.' },
+        cwd: { type: 'string', description: 'Working directory for claude-code sessions (e.g. "~/Projects/my-app"). Defaults to the server\'s current directory.' },
       },
       required: [],
     },
@@ -199,9 +202,9 @@ const VIRTUAL_FS_TOOLS: Anthropic.Tool[] = [
 
 export interface AgentInteropContext {
   listAgents: () => AgentMeta[]
-  readAgentChat: (agentId: string) => Message[] | { error: string }
+  readAgentChat: (agentId: string) => Message[] | { error: string } | { note: string }
   sendMessageToAgent: (agentId: string, message: string, awaitResponse: boolean) => Promise<{ queued: true; agentName: string } | { response: string; agentName: string } | { error: string }>
-  createAgent: (name?: string, model?: string) => Promise<AgentMeta | { error: string }>
+  createAgent: (name?: string, model?: string, sessionType?: SessionType, cwd?: string) => Promise<AgentMeta | { error: string }>
   deleteAgent: (agentId: string) => Promise<{ success: true } | { error: string }>
 }
 
@@ -284,14 +287,14 @@ function buildSystemPrompt(ctx: StreamContext): string | undefined {
     parts.push(
       `## Agent Interoperability\n` +
       `You can interact with other agent sessions running in this Pancake workspace.\n\n` +
-      `- list_agents — see all available agents and their status\n` +
-      `- read_agent_chat — read another agent's full conversation history\n` +
-      `- send_message_to_agent — send a message to another agent (set await_response: true to wait for their reply before continuing; default is fire-and-forget)\n` +
-      `- create_agent — spawn a new agent session\n` +
-      `- delete_agent — close and remove an agent session\n\n` +
+      `- list_agents — see all available agents and their status (model: "claude code" identifies Claude Code terminal sessions)\n` +
+      `- read_agent_chat — read another agent's conversation history (Claude Code sessions have no message history; use send_message_to_agent to communicate with them)\n` +
+      `- send_message_to_agent — send a message to another agent. For chat agents: triggers a reply (set await_response: true to wait). For Claude Code sessions: injects the text directly into the terminal as keyboard input.\n` +
+      `- create_agent — spawn a new session. Use session_type: "claude-code" to open a Claude Code terminal (optionally pass cwd for its working directory). Use session_type: "chat" or omit for a normal chat agent.\n` +
+      `- delete_agent — close and remove an agent session (works for both chat and Claude Code sessions)\n\n` +
       `Important constraints:\n` +
       `- You cannot message or delete yourself.\n` +
-      `- You cannot message an agent that is currently streaming (isStreaming: true). Use list_agents to check status first, then retry.\n` +
+      `- You cannot message a chat agent that is currently streaming (isStreaming: true). Use list_agents to check status first, then retry. Claude Code sessions can always receive input.\n` +
       `- delete_agent may trigger a user confirmation prompt; if the user cancels, the tool will return an error.`
     )
   }
@@ -369,6 +372,7 @@ async function executeTool(block: Anthropic.ToolUseBlock, ctx: StreamContext): P
   if (ctx.agentInterop && block.name === 'read_agent_chat') {
     const result = ctx.agentInterop.readAgentChat(input.agent_id)
     if ('error' in result) return `Error: ${result.error}`
+    if ('note' in result) return result.note
     if (result.length === 0) return '(this agent has no messages yet)'
     return JSON.stringify(result.map(m => ({ role: m.role, content: m.content })), null, 2)
   }
@@ -380,9 +384,12 @@ async function executeTool(block: Anthropic.ToolUseBlock, ctx: StreamContext): P
     return `Message queued for agent "${result.agentName}".`
   }
   if (ctx.agentInterop && block.name === 'create_agent') {
-    const result = await ctx.agentInterop.createAgent(input.name, input.model)
+    const inp = block.input as Record<string, string>
+    const sessionType = (inp.session_type === 'claude-code' ? 'claude-code' : 'chat') as SessionType
+    const result = await ctx.agentInterop.createAgent(inp.name, inp.model, sessionType, inp.cwd)
     if ('error' in result) return `Error: ${result.error}`
-    return `Created agent "${result.name}" (id: ${result.id}, model: ${result.model}).`
+    const typeNote = sessionType === 'claude-code' ? ' [Claude Code terminal]' : ` (model: ${result.model})`
+    return `Created agent "${result.name}" (id: ${result.id}${typeNote}).`
   }
   if (ctx.agentInterop && block.name === 'delete_agent') {
     const result = await ctx.agentInterop.deleteAgent(input.agent_id)
@@ -432,6 +439,7 @@ function formatBytes(bytes: number): string {
 
 export async function streamMessage(
   apiKey: string,
+  authMode: AuthMode,
   model: string,
   messages: Message[],
   onChunk: (text: string) => void,
@@ -439,7 +447,9 @@ export async function streamMessage(
   onError: (err: string) => void,
   ctx: StreamContext,
 ) {
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
+  const client = authMode === 'cybertron'
+    ? new Anthropic({ baseURL: CYBERTRON_PROXY, apiKey: 'unused', dangerouslyAllowBrowser: true })
+    : new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
 
   const localActive = ctx.localEnabled && ctx.fsAccess !== 'none'
   // PFS tools are always available when PFS is enabled, even if no files uploaded yet

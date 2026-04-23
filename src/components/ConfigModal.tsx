@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import type { Config, Hotkeys } from '../types'
+import type { AuthMode, Config, Hotkeys } from '../types'
 
 interface Props {
   config: Config
@@ -43,6 +43,7 @@ function buildCombo(e: KeyboardEvent | React.KeyboardEvent): string {
 
 export default function ConfigModal({ config, onSave, onClose }: Props) {
   const [apiKey, setApiKey] = useState(config.apiKey)
+  const [authMode, setAuthMode] = useState<AuthMode>(config.authMode ?? 'api-key')
   const [defaultModel, setDefaultModel] = useState(config.defaultModel)
   const [defaultAgentInteropEnabled, setDefaultAgentInteropEnabled] = useState(config.defaultAgentInteropEnabled)
   const [hotkeys, setHotkeys] = useState<Hotkeys>({ ...config.hotkeys })
@@ -55,7 +56,7 @@ export default function ConfigModal({ config, onSave, onClose }: Props) {
   }, [])
 
   function handleSave() {
-    onSave({ apiKey, defaultModel, defaultAgentInteropEnabled, hotkeys })
+    onSave({ apiKey, authMode, defaultModel, defaultAgentInteropEnabled, hotkeys })
     onClose()
   }
 
@@ -87,15 +88,50 @@ export default function ConfigModal({ config, onSave, onClose }: Props) {
     <div className="modal-overlay" onClick={onClose}>
       <div ref={modalRef} className="modal modal-wide" onClick={e => e.stopPropagation()} onKeyDown={handleModalKeyDown} tabIndex={-1}>
         <h2>Config</h2>
-        <label>
-          Anthropic API Key
-          <input
-            type="password"
-            value={apiKey}
-            onChange={e => setApiKey(e.target.value)}
-            placeholder="sk-ant-..."
-          />
+
+        <label as="div">
+          Auth Mode
+          <div style={{ display: 'flex', borderRadius: '5px', border: '1px solid var(--brown-border)', overflow: 'hidden' }}>
+            {(['api-key', 'cybertron'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setAuthMode(mode)}
+                style={{
+                  flex: 1,
+                  padding: '7px 10px',
+                  border: 'none',
+                  borderRight: mode === 'api-key' ? '1px solid var(--brown-border)' : 'none',
+                  background: authMode === mode ? 'var(--brown)' : 'var(--cream)',
+                  color: authMode === mode ? 'var(--cream)' : 'var(--brown-light)',
+                  fontSize: '0.85rem',
+                  fontWeight: authMode === mode ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+              >
+                {mode === 'api-key' ? 'API Key' : 'Cybertron'}
+              </button>
+            ))}
+          </div>
+          {authMode === 'cybertron' && (
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400, lineHeight: 1.5 }}>
+              Routes through Cybertron using your devbox credentials. Requires the Pancake server to be running in a devbox shell.
+            </span>
+          )}
         </label>
+
+        {authMode === 'api-key' && (
+          <label>
+            Anthropic API Key
+            <input
+              type="password"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder="sk-ant-..."
+            />
+          </label>
+        )}
         <label>
           Default Model
           <select value={defaultModel} onChange={e => setDefaultModel(e.target.value)}>

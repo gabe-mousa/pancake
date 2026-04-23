@@ -30,6 +30,7 @@ export default function HowToPage() {
               <li><a href="#interop-delete-confirm">Delete confirmation</a></li>
             </ul>
           </li>
+          <li><a href="#layout">Layout modes</a></li>
           <li><a href="#notepad">Notepad</a></li>
           <li><a href="#header-controls">Header controls</a></li>
           <li><a href="#shortcuts">Keyboard shortcuts</a></li>
@@ -71,7 +72,7 @@ export default function HowToPage() {
             <li>Click <strong>⊞</strong> or press <code>Shift+Ctrl+F</code> to expand a tile to full screen. Press <strong>Esc</strong> or <code>Shift+Ctrl+F</code> again, or click <strong>⊡</strong>, to minimize.</li>
             <li>Drag the <strong>⠿</strong> handle to reorder tiles in the grid.</li>
             <li>Click <strong>✕</strong> to close a session permanently.</li>
-            <li>The grid fits <strong>4 tiles per row</strong>. Tiles have a fixed height and scroll internally.</li>
+            <li>The grid layout is switchable — see <a href="#layout">Layout modes</a> below.</li>
           </ul>
 
           <h3 id="interop-badge">AIO badge</h3>
@@ -257,6 +258,20 @@ export default function HowToPage() {
           </ul>
         </section>
 
+        <section id="layout">
+          <h2>Layout modes</h2>
+          <p>
+            The layout toggle in the nav bar (between the nav links and the header controls) switches the session grid between two modes:
+          </p>
+          <ul>
+            <li><strong>Wide</strong> (default) — 4 columns, compact tile height. Best for monitoring many sessions at a glance.</li>
+            <li><strong>Tall</strong> — 2 columns, tiles fill roughly half the viewport height. Better for reading longer conversations or working with fewer sessions in more detail.</li>
+          </ul>
+          <p>
+            The two small icons in the toggle visually represent each layout — four thin bars for wide, two wider bars for tall. The active layout is highlighted.
+          </p>
+        </section>
+
         <section id="notepad">
           <h2>Notepad</h2>
           <p>
@@ -264,7 +279,8 @@ export default function HowToPage() {
           </p>
           <ul>
             <li>Click <strong>Notepad</strong> in the nav for the full-page editor.</li>
-            <li>Press <code>Shift+Ctrl+X</code> to toggle a <strong>floating Notepad window</strong> you can drag anywhere.</li>
+            <li>Press <code>Shift+Ctrl+X</code> to toggle a <strong>floating Notepad window</strong> you can drag anywhere on screen.</li>
+            <li>Drag any <strong>edge or corner</strong> of the floating window to resize it freely. Minimum size is 220×180px.</li>
             <li>The floating window and the Notepad page share the same content — edits appear instantly in both.</li>
             <li>Click <strong>Preview</strong> to render as Markdown; click <strong>Edit</strong> to return to editing.</li>
             <li>Content lives in memory only — it does not persist after a page refresh.</li>
@@ -286,6 +302,7 @@ export default function HowToPage() {
               <tr><th>Control</th><th>What it does</th></tr>
             </thead>
             <tbody>
+              <tr><td><strong>Layout toggle</strong> (wide / tall icons)</td><td>Switch the session grid between 4-column wide and 2-column tall layouts</td></tr>
               <tr><td><strong>PFS</strong> (green when on)</td><td>Toggle Pancake's virtual filesystem globally for new sessions</td></tr>
               <tr><td><strong>LFS</strong> (blue when on)</td><td>Toggle local filesystem bridge globally for new sessions</td></tr>
               <tr><td><strong>AIO</strong> (lavender when on)</td><td>Toggle agent interoperability globally — the default for new sessions. Per-session overrides can still be set on each tile's Interop badge.</td></tr>

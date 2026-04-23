@@ -17,6 +17,7 @@ interface Props {
   selectedIds: Set<string>
   activeInputValue: string
   expandHotkey: string
+  layout: 'wide' | 'tall'
   onSendMessage: (sessionId: string, text: string) => void
   onRemove: (sessionId: string) => void
   onRename: (sessionId: string, name: string) => void
@@ -28,7 +29,7 @@ interface Props {
   defaultAgentInteropEnabled: boolean
 }
 
-export default function TileGrid({ sessions, streamingContents, activeTileIndex, selectedIds, activeInputValue, expandHotkey, onSendMessage, onRemove, onRename, onReorder, onFocusTile, onActiveInputChange, onFsAccessChange, onAgentInteropChange, defaultAgentInteropEnabled }: Props) {
+export default function TileGrid({ sessions, streamingContents, activeTileIndex, selectedIds, activeInputValue, expandHotkey, layout, onSendMessage, onRemove, onRename, onReorder, onFocusTile, onActiveInputChange, onFsAccessChange, onAgentInteropChange, defaultAgentInteropEnabled }: Props) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   function handleDragEnd(event: DragEndEvent) {
@@ -43,7 +44,7 @@ export default function TileGrid({ sessions, streamingContents, activeTileIndex,
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={sessions.map(s => s.id)} strategy={rectSortingStrategy}>
-        <div className="tile-grid">
+        <div className={`tile-grid${layout === 'tall' ? ' tile-grid--tall' : ''}`}>
           {sessions.map((session, i) => (
             <Tile
               key={session.id}

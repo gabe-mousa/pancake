@@ -12,6 +12,8 @@
   --brown-border: #c4a882;
   --text: #3a2517;
   --text-muted: #8a7060;
+  --header-h: 48px;
+  --main-pad: clamp(12px, 2vw, 24px);
 }
 
 body {
@@ -32,19 +34,24 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 clamp(10px, 2vw, 20px);
   height: 48px;
   border-bottom: 1px solid var(--brown-border);
   background: var(--cream);
   position: sticky;
   top: 0;
   z-index: 10;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .app-header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: clamp(6px, 1vw, 12px);
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .app-title {
@@ -82,6 +89,7 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .kill-btn {
@@ -171,13 +179,13 @@ body {
 
 .app-main {
   flex: 1;
-  padding: 24px;
+  padding: var(--main-pad);
 }
 
 .empty-state {
   color: var(--brown-light);
   text-align: center;
-  margin-top: 80px;
+  margin-top: clamp(40px, 8vh, 80px);
   font-size: 0.95rem;
 }
 
@@ -185,8 +193,77 @@ body {
 .tile-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  gap: clamp(8px, 1.2vw, 16px);
   align-items: flex-start;
+}
+
+.tile-grid--tall {
+  grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: calc(50vh - var(--header-h) - var(--main-pad) * 2);
+}
+
+.tile-grid--tall .tile {
+  height: 100%;
+}
+
+.tile-grid--tall .chat-window {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Layout toggle button group */
+.layout-toggle {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--brown-faint);
+  border: 1px solid var(--brown-border);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.layout-btn {
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.layout-btn:hover { background: var(--brown-border); }
+.layout-btn-active { background: var(--brown-border) !important; }
+
+.layout-icon {
+  display: grid;
+  gap: 2px;
+  width: 20px;
+  height: 14px;
+}
+
+.layout-icon span {
+  background: var(--brown-light);
+  border-radius: 1px;
+  display: block;
+}
+
+.layout-btn-active .layout-icon span {
+  background: var(--brown);
+}
+
+.layout-icon-wide {
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: 1fr;
+  align-items: stretch;
+}
+
+.layout-icon-tall {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: 1fr;
+  align-items: stretch;
 }
 
 /* Tile */
@@ -199,12 +276,12 @@ body {
   box-shadow: 0 1px 4px rgba(92,61,46,0.08);
   overflow: hidden;
   min-width: 0;
-  height: 200px;
+  height: clamp(160px, 25vh, 280px);
 }
 
 .tile.tile-expanded {
   position: fixed;
-  inset: 60px 20px 20px;
+  inset: 56px clamp(8px, 1.5vw, 20px) clamp(8px, 1.5vw, 20px);
   width: auto;
   height: auto;
   z-index: 50;
@@ -492,8 +569,8 @@ body {
   background: var(--cream);
   border: 1.5px solid var(--brown-border);
   border-radius: 10px;
-  padding: 28px;
-  width: 360px;
+  padding: clamp(16px, 3vw, 28px);
+  width: min(360px, calc(100vw - 32px));
   max-height: 90vh;
   overflow-y: auto;
   display: flex;
@@ -503,12 +580,12 @@ body {
 }
 
 .modal-wide {
-  width: 520px;
+  width: min(520px, calc(100vw - 32px));
 }
 
 .hotkey-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
 }
 
@@ -625,7 +702,7 @@ body {
 /* How To page — two-column layout */
 .how-to-layout {
   display: flex;
-  gap: 32px;
+  gap: clamp(16px, 3vw, 32px);
   align-items: flex-start;
   max-width: 960px;
   margin: 0 auto;
@@ -634,7 +711,7 @@ body {
 
 /* TOC sidebar */
 .how-to-toc {
-  flex: 0 0 180px;
+  flex: 0 0 clamp(120px, 18vw, 180px);
   position: sticky;
   top: 20px;
   font-size: 0.8rem;
@@ -714,6 +791,7 @@ body {
 .how-to-page section {
   display: flex;
   flex-direction: column;
+  scroll-margin-top: 64px;
 }
 
 .how-to-page p {
@@ -835,7 +913,7 @@ body {
 }
 
 .pancake-gallery-img {
-  height: 200px;
+  height: clamp(120px, 20vh, 200px);
   width: auto;
   border-radius: 8px;
   object-fit: cover;
@@ -861,8 +939,8 @@ body {
 .notepad-window {
   position: fixed;
   z-index: 200;
-  width: 340px;
-  min-height: 260px;
+  min-width: 220px;
+  min-height: 180px;
   background: var(--cream);
   border: 1.5px solid var(--brown-border);
   border-radius: 8px;
@@ -871,6 +949,20 @@ body {
   flex-direction: column;
   overflow: hidden;
 }
+
+/* Resize handles */
+.notepad-resize {
+  position: absolute;
+  z-index: 201;
+}
+.notepad-resize-e  { top: 8px; right: 0;  bottom: 8px; width: 5px; cursor: ew-resize; }
+.notepad-resize-w  { top: 8px; left: 0;   bottom: 8px; width: 5px; cursor: ew-resize; }
+.notepad-resize-s  { left: 8px; right: 8px; bottom: 0; height: 5px; cursor: ns-resize; }
+.notepad-resize-n  { left: 8px; right: 8px; top: 0;    height: 5px; cursor: ns-resize; }
+.notepad-resize-se { right: 0; bottom: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+.notepad-resize-sw { left: 0;  bottom: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+.notepad-resize-ne { right: 0; top: 0;    width: 10px; height: 10px; cursor: nesw-resize; }
+.notepad-resize-nw { left: 0;  top: 0;    width: 10px; height: 10px; cursor: nwse-resize; }
 
 .notepad-header {
   display: flex;
@@ -922,7 +1014,6 @@ body {
   font-family: 'Menlo', 'Consolas', monospace;
   background: var(--cream);
   color: var(--text);
-  min-height: 200px;
   line-height: 1.5;
 }
 
@@ -933,7 +1024,6 @@ body {
   line-height: 1.5;
   color: var(--text);
   overflow-y: auto;
-  min-height: 200px;
 }
 
 .notepad-empty {
@@ -1002,13 +1092,13 @@ body {
   border: 1px solid var(--brown-border);
   border-radius: 6px;
   outline: none;
-  padding: 14px 16px;
+  padding: clamp(10px, 2vw, 16px);
   font-size: 0.88rem;
   font-family: 'Menlo', 'Consolas', monospace;
   background: var(--cream);
   color: var(--text);
   line-height: 1.6;
-  min-height: 400px;
+  min-height: clamp(200px, 40vh, 400px);
 }
 .notepad-page-textarea:focus { border-color: var(--brown); }
 
@@ -1016,12 +1106,12 @@ body {
   flex: 1;
   border: 1px solid var(--brown-border);
   border-radius: 6px;
-  padding: 14px 16px;
+  padding: clamp(10px, 2vw, 16px);
   font-size: 0.88rem;
   line-height: 1.6;
   color: var(--text);
   overflow-y: auto;
-  min-height: 400px;
+  min-height: clamp(200px, 40vh, 400px);
   background: var(--cream);
 }
 
@@ -1164,12 +1254,12 @@ body {
 /* ── Filesystem Page ─────────────────────────────────────────────────────── */
 
 .filesystem-page {
-  max-width: 720px;
+  max-width: min(720px, 100%);
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding-bottom: 48px;
+  padding-bottom: clamp(24px, 5vh, 48px);
 }
 
 .filesystem-page-header h1 {
@@ -1299,7 +1389,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 280px;
+  max-height: clamp(160px, 30vh, 280px);
   overflow-y: auto;
   border: 1px solid var(--brown-faint);
   border-radius: 6px;
@@ -1393,7 +1483,7 @@ body {
   font-family: 'Menlo', 'Consolas', monospace;
   color: var(--text);
   line-height: 1.5;
-  max-height: 240px;
+  max-height: clamp(120px, 25vh, 240px);
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-all;
@@ -1482,7 +1572,7 @@ body {
   border-radius: 6px;
   background: var(--cream);
   overflow: hidden;
-  max-height: 320px;
+  max-height: clamp(200px, 35vh, 320px);
   overflow-y: auto;
 }
 
@@ -1634,3 +1724,65 @@ body {
 .fs-tree-action:hover { color: var(--brown); border-color: var(--brown); }
 
 .fs-tree-action-remove:hover { color: #dc2626; border-color: #dc2626; }
+
+/* ── Responsive breakpoints ──────────────────────────────────────────────── */
+
+/* Medium screens: ~900px — reduce to 3-col tile grid, compress header controls */
+@media (max-width: 900px) {
+  .tile-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .tile-grid--tall {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  /* Hide PFS/LFS/AIO labels on smaller screens — keep icons/toggles */
+  .app-title {
+    display: none;
+  }
+}
+
+/* Small screens: ~640px — 2-col tile grid, stack how-to layout */
+@media (max-width: 640px) {
+  .tile-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .tile-grid--tall {
+    grid-template-columns: 1fr;
+    grid-auto-rows: calc(60vh - 48px);
+  }
+  .how-to-layout {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .how-to-toc {
+    flex: none;
+    position: static;
+    width: 100%;
+  }
+  .nav-btn {
+    padding: 4px 8px;
+    font-size: 0.78rem;
+  }
+  .fs-quick-toggle {
+    font-size: 0.6rem;
+    padding: 3px 5px;
+  }
+  .layout-toggle {
+    display: none;
+  }
+}
+
+/* Very small screens: ~400px — single column */
+@media (max-width: 400px) {
+  .tile-grid,
+  .tile-grid--tall {
+    grid-template-columns: 1fr;
+  }
+  .app-nav {
+    gap: 0;
+  }
+  .nav-btn {
+    padding: 4px 6px;
+    font-size: 0.72rem;
+  }
+}

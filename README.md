@@ -13,27 +13,37 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 ## Features
 
 - **Multi-session grid** — run up to 4 sessions per row, each with its own model and conversation history
+- **Layout modes** — switch between wide (4 columns) and tall (2 columns, larger tiles) from the nav bar
 - **Broadcasting** — select multiple tiles and send one message to all of them simultaneously
-- **Agentic tool loop** — Claude can read and write a shared notepad as a tool, enabling inter-agent coordination
-- **Shared notepad** — a floating markdown scratchpad readable and writable by any agent or by you
+- **Shared notepad** — a floating, resizable markdown scratchpad readable and writable by any agent or by you
+- **Agent interoperability** — agents can list, message, create, and delete other sessions autonomously via tool calls
+- **Pancake's Filesystem (PFS)** — an in-browser virtual filesystem; upload files and folders for agents to read and write
+- **Local Filesystem (LFS)** — a bridge to a real directory on your machine, served by a local Express server Pancake starts automatically
 - **Drag and drop** — reorder session tiles by dragging
 - **Configurable hotkeys** — all keyboard shortcuts are remappable in the settings menu
-- **Flexible auth** — connect via Anthropic API key or a Cybertron devbox gateway
+- **No backend** — runs entirely in your browser; your API key is stored in `localStorage` and never leaves your machine
 
 ## Requirements
 
 - Node.js 18+
-- An [Anthropic API key](https://console.anthropic.com/) — or a Cybertron devbox shell for gateway access
+- An [Anthropic API key](https://console.anthropic.com/)
 
 ## Usage
 
 ### Getting started
 
 1. Run `npx pancake`
-2. Click the cog in the top right and enter your Anthropic API key
+2. Click **⚙** (top right) and enter your Anthropic API key
 3. Press **Ctrl+Shift+N** (or click **+**) to create a session
 4. Choose a name and model, then click **Create**
 5. Type in the chat input and press **Enter** to send
+
+### Layout modes
+
+Use the layout toggle in the nav bar to switch between two grid modes:
+
+- **Wide** (default) — 4 columns, compact tile height; fit as many sessions as possible on screen
+- **Tall** — 2 columns, tiles fill roughly half the viewport height; better for reading longer conversations
 
 ### Keyboard shortcuts
 

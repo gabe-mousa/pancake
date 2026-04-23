@@ -105,11 +105,23 @@ npm run dev
 
 Then open `http://localhost:5173`.
 
+**Note:** `node-pty` (used for Claude Code terminal sessions) includes native bindings that must be compiled for your machine. If `npm install` doesn't build them automatically, run:
+
+```bash
+cd node_modules/node-pty && npx node-gyp rebuild
+```
+
+### Environment variables
+
+| Variable | Description |
+|---|---|
+| `CLAUDE_PATH` | Override the path to the Claude Code CLI binary. Defaults to `claude` (resolved from `PATH`). |
+
 ### Scripts
 
 | Command | Description |
 |---|---|
-| `npm run dev` | Start Vite dev server with hot reload |
+| `npm run dev` | Start Vite dev server + backend server with hot reload |
 | `npm run build` | TypeScript compile + Vite bundle to `dist/` |
 | `npm run preview` | Preview the production build locally |
 | `npm start` | Build if needed, then launch the production server |

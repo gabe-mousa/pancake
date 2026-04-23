@@ -110,7 +110,7 @@ export default function HowToPage() {
 
           <h3 id="claude-code-sessions">Claude Code sessions</h3>
           <p>
-            Claude Code sessions run the local Claude Code CLI (<code>~/.devbox/ai/claude/claude</code>) inside a full PTY terminal rendered with xterm.js. They behave like a real terminal tab embedded in the grid.
+            Claude Code sessions run the local Claude Code CLI (<code>claude</code>) inside a full PTY terminal rendered with xterm.js. The binary is resolved from your <code>PATH</code>, or you can set <code>CLAUDE_PATH</code> to override. They behave like a real terminal tab embedded in the grid.
           </p>
           <ul>
             <li>Identified by the <strong>≥_</strong> badge in the tile header.</li>

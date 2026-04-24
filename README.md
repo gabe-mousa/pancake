@@ -17,12 +17,13 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 - **Layout modes** — switch between wide (4 columns) and tall (2 columns, larger tiles) from the nav bar
 - **Broadcasting** — select multiple tiles and send one message to all of them simultaneously
 - **Shared notepad** — a floating, resizable markdown scratchpad readable and writable by any agent or by you
-- **Agent interoperability** — agents can list, message, create, and delete other sessions autonomously via tool calls
+- **Agent interoperability** — agents can list, message, create, and delete other sessions autonomously via tool calls. Claude Code sessions can also use AIO via REST endpoints (`curl`)
 - **Pancake's Filesystem (PFS)** — an in-browser virtual filesystem; upload files and folders for agents to read and write
 - **Local Filesystem (LFS)** — a bridge to a real directory on your machine, served by a local Express server Pancake starts automatically
 - **Drag and drop** — reorder session tiles by dragging
 - **Configurable hotkeys** — all keyboard shortcuts are remappable in the settings menu
 - **Flexible auth** — connect via Anthropic API key or a Cybertron devbox gateway
+- **Toolbar help** — click the **?** button in the header to see a quick reference of what each toolbar button does
 - **No backend** — runs entirely in your browser; your API key is stored in `localStorage` and never leaves your machine
 
 ## Requirements
@@ -37,7 +38,7 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 1. Run `npx pancake`
 2. Click **⚙** (top right) and enter your Anthropic API key (or set auth mode to Cybertron if using a devbox shell)
 3. Press **Ctrl+Shift+N** (or click **+**) to create a session
-4. Choose a session type (**Chat** or **Claude Code**), a name, and optionally a model or working directory, then click **Create**
+4. Choose a session type (**Chat** or **Claude Code**) — press **Ctrl+Shift+N** again to toggle the type — then enter a name and optionally a model or working directory, and press **Enter** or click **Create**
 5. Type in the chat input and press **Enter** to send (Chat), or type directly in the terminal (Claude Code)
 
 ### Layout modes
@@ -51,7 +52,7 @@ Use the layout toggle in the nav bar to switch between two grid modes:
 
 | Action | Default shortcut |
 |---|---|
-| New session | `Ctrl+Shift+N` |
+| New session | `Ctrl+Shift+N` (press again to toggle Chat / Claude Code) |
 | Navigate tiles | `Alt+Arrow keys` |
 | Select tiles (for broadcast) | `Shift+Arrow keys` |
 | Deselect all | `Shift+F` |
@@ -85,10 +86,16 @@ When enabled (the **AIO** button, lavender when on), agents can use five tools t
 - `list_agents` — list all open sessions
 - `read_agent_chat(id)` — read another session's full conversation history
 - `send_message_to_agent(id, message, await_response?)` — inject a message into another session
-- `create_agent(name?, model?)` — spawn a new session tile
+- `create_agent(name?, model?, session_type?, cwd?)` — spawn a new session tile
 - `delete_agent(id)` — close and erase another session (requires confirmation)
 
 Interop is enabled by default and can be toggled globally from the header or per-session from each tile's AIO badge.
+
+Claude Code sessions also have access to AIO via REST endpoints on the Pancake server. CC sessions are automatically informed about these endpoints when they start and can call them with `curl`:
+
+- `GET /aio/list-agents` — list all sessions
+- `POST /aio/create-agent` — create a new session
+- `POST /aio/send-message` — send a message to another session
 
 ### Models
 

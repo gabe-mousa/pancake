@@ -12,7 +12,9 @@ pancake/
 ├── server/index.js          # Express + WebSocket backend (port 4174)
 │                              - Local filesystem bridge (LFS)
 │                              - PTY management for Claude Code sessions
-│                              - WebSocket server for terminal I/O
+│                              - WebSocket server for terminal I/O (path: /ws/terminal)
+│                              - Control WebSocket for AIO relay (path: /ws/control)
+│                              - AIO REST endpoints (/aio/*) for Claude Code sessions
 ├── src/
 │   ├── App.tsx              # Main app: state, routing, agent interop, layout
 │   ├── anthropic.ts         # Anthropic API streaming client
@@ -49,14 +51,22 @@ pancake/
 
 ### Data flow for Claude Code sessions
 ```
-TerminalTile.tsx → WebSocket (ws://127.0.0.1:4174) → server/index.js → pty.spawn(claude)
+TerminalTile.tsx → WebSocket (ws://127.0.0.1:4174/ws/terminal) → server/index.js → pty.spawn(claude)
 ```
 - Binary path: `process.env.CLAUDE_PATH || 'claude'` (resolved from PATH)
 - PTY processes stored in `ptyMap` keyed by sessionId
 - Input injection also available via `POST /terminal/input` (used by agent interop)
+- CC sessions are spawned with `--append-system-prompt` to inject AIO endpoint docs
+
+### WebSocket routing
+Path-based routing via HTTP `upgrade` event:
+- `/ws/terminal` — PTY terminal connections (TerminalTile.tsx ↔ server)
+- `/ws/control` — AIO control channel (App.tsx ↔ server, single connection)
 
 ### Agent interoperability (AIO)
-When enabled, sessions get tools: `list_agents`, `read_agent_chat`, `send_message_to_agent`, `create_agent`, `delete_agent`. These are injected as system prompt tool definitions in `App.tsx`.
+**Chat sessions:** Tools (`list_agents`, `read_agent_chat`, `send_message_to_agent`, `create_agent`, `delete_agent`) are injected as system prompt tool definitions in `App.tsx`.
+
+**Claude Code sessions:** AIO is exposed as REST endpoints on the server (`/aio/list-agents`, `/aio/create-agent`, `/aio/send-message`). CC sessions learn about these via `--append-system-prompt` and call them with `curl`. The server relays requests to the frontend via a control WebSocket for operations that require frontend state (session creation, listing).
 
 ### Filesystems
 - **PFS** — In-memory virtual filesystem (browser only), stored in React state

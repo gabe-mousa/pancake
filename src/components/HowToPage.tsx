@@ -32,6 +32,7 @@ export default function HowToPage() {
           <li><a href="#agent-interop">Agent interoperability</a>
             <ul>
               <li><a href="#interop-tools">Agent tools</a></li>
+              <li><a href="#interop-cc-rest">Claude Code AIO (REST)</a></li>
               <li><a href="#interop-toggle">Enabling / disabling</a></li>
               <li><a href="#interop-messages">Injected messages</a></li>
               <li><a href="#interop-delete-confirm">Delete confirmation</a></li>
@@ -63,7 +64,7 @@ export default function HowToPage() {
           <h2>Getting started</h2>
           <ol>
             <li>Click <strong>⚙</strong> (top right) to open Config. Choose an <strong>Auth Mode</strong> — <strong>API Key</strong> or <strong>Cybertron</strong> (see <a href="#authentication">Authentication</a> below) — enter your credentials if required, choose a default model, and click <strong>Save</strong>.</li>
-            <li>Click <strong>+</strong> (bottom right) or press <code>Ctrl+Shift+N</code> to create a new session. Choose a session type — <strong>Chat</strong> for a standard model conversation, or <strong>Claude Code</strong> for a full terminal running the Claude Code CLI. Give it a name; Chat sessions also let you pick a model, Claude Code sessions let you optionally set a working directory. Press <strong>Enter</strong> or click <strong>Create</strong>.</li>
+            <li>Click <strong>+</strong> (bottom right) or press <code>Ctrl+Shift+N</code> to create a new session. Choose a session type — <strong>Chat</strong> for a standard model conversation, or <strong>Claude Code</strong> for a full terminal running the Claude Code CLI. Press <code>Ctrl+Shift+N</code> again while the dialog is open to toggle between types. Give it a name; Chat sessions also let you pick a model, Claude Code sessions let you optionally set a working directory. Press <strong>Enter</strong> or click <strong>Create</strong>.</li>
             <li>Click a tile to focus it, then type in the chat input and press <strong>Enter</strong> to send.</li>
           </ol>
         </section>
@@ -118,6 +119,7 @@ export default function HowToPage() {
             <li>Pancake hotkeys (navigation, expand, etc.) still work: they are intercepted before reaching the PTY so they do not interfere with the terminal session.</li>
             <li>Click <strong>⊞</strong> or press <code>Ctrl+Shift+F</code> to expand — the terminal resizes automatically to fill the screen.</li>
             <li>Claude Code sessions have an <strong>AIO badge</strong> and can participate in agent interoperability (see below). Messages sent via <code>send_message_to_agent</code> are injected directly into the terminal as typed input.</li>
+            <li>Claude Code sessions are automatically informed about <strong>AIO REST endpoints</strong> on the Pancake server via a system prompt injection. They can call <code>curl http://127.0.0.1:4174/aio/list-agents</code> (and the other <code>/aio/*</code> endpoints) to list, create, and message other sessions — including spawning new Claude Code sessions.</li>
             <li>Claude Code sessions do <strong>not</strong> have an FS access badge or PFS/LFS dot indicators — filesystem access is managed by Claude Code itself.</li>
             <li>Click <strong>✕</strong> to close the tile — this kills the underlying PTY process immediately.</li>
           </ul>
@@ -272,6 +274,25 @@ export default function HowToPage() {
             </li>
           </ul>
 
+          <h3 id="interop-cc-rest">Claude Code AIO (REST endpoints)</h3>
+          <p>
+            Chat sessions use AIO via tool calls injected into the system prompt. Claude Code sessions cannot use those tools directly, so Pancake exposes equivalent functionality as REST endpoints on the local server. CC sessions are automatically informed about these endpoints when they start (via <code>--append-system-prompt</code>) and can call them with <code>curl</code>.
+          </p>
+          <ul>
+            <li><code>GET /aio/list-agents</code> — returns a JSON array of all sessions with their id, name, model, status, and session type.</li>
+            <li><code>POST /aio/create-agent</code> — creates a new session. Body: <code>{'{"name": "Worker", "sessionType": "claude-code", "cwd": "/path"}'}</code>. Returns the new session's id and name.</li>
+            <li><code>POST /aio/send-message</code> — sends a message to another session. Body: <code>{'{"agentId": "uuid", "message": "text"}'}</code>. For Claude Code targets, the message is injected directly into the PTY. For Chat targets, it triggers a normal message send.</li>
+          </ul>
+          <p>
+            Example from inside a Claude Code session:
+          </p>
+          <pre style={{ fontSize: '0.8rem', background: 'var(--cream-dark, #f5ede4)', padding: '8px 12px', borderRadius: '5px', overflowX: 'auto' }}>
+            {`curl -s http://127.0.0.1:4174/aio/list-agents | jq
+curl -s -X POST http://127.0.0.1:4174/aio/create-agent \\
+  -H 'Content-Type: application/json' \\
+  -d '{"name":"Helper","sessionType":"claude-code"}'`}
+          </pre>
+
           <h3 id="interop-toggle">Enabling / disabling</h3>
           <p>
             Agent interop follows the same two-level toggle pattern as LFS access:
@@ -350,9 +371,11 @@ export default function HowToPage() {
             </thead>
             <tbody>
               <tr><td><strong>Layout toggle</strong> (wide / tall icons)</td><td>Switch the session grid between 4-column wide and 2-column tall layouts</td></tr>
+              <tr><td><strong>?</strong></td><td>Toolbar guide — click to show a quick reference popover explaining what each header button does</td></tr>
               <tr><td><strong>PFS</strong> (green when on)</td><td>Toggle Pancake's virtual filesystem globally for new sessions</td></tr>
               <tr><td><strong>LFS</strong> (blue when on)</td><td>Toggle local filesystem bridge globally for new sessions</td></tr>
               <tr><td><strong>AIO</strong> (lavender when on)</td><td>Toggle agent interoperability globally — the default for new sessions. Per-session overrides can still be set on each tile's Interop badge.</td></tr>
+              <tr><td><strong>STO</strong> (cyan when on)</td><td>Session persistence — when enabled, sessions survive page refreshes. When disabled, sessions are lost on reload.</td></tr>
               <tr><td><strong>LFS default: …</strong></td><td>Set the default FS access level for new sessions (LFS only)</td></tr>
               <tr><td><strong>■</strong></td><td>Emergency stop — immediately aborts all actively streaming agents. Disabled (greyed out) when no agents are running. Useful when agents are spawning sub-agents uncontrollably.</td></tr>
               <tr><td><strong>↺</strong></td><td>Reset everything — sessions, notes, and settings (confirmation required)</td></tr>
@@ -375,7 +398,7 @@ export default function HowToPage() {
               <tr><td><code>Shift+Arrow</code></td><td>Select current + adjacent tile, move focus</td></tr>
               <tr><td><code>Shift+F</code></td><td>Clear tile selection</td></tr>
               <tr><td><code>Shift+Ctrl+F</code></td><td>Expand / minimize focused tile</td></tr>
-              <tr><td><code>Ctrl+Shift+N</code></td><td>Open new session dialog</td></tr>
+              <tr><td><code>Ctrl+Shift+N</code></td><td>Open new session dialog (press again to toggle Chat / Claude Code)</td></tr>
               <tr><td><code>Shift+Ctrl+X</code></td><td>Toggle floating Notepad window</td></tr>
               <tr><td><code>Enter</code></td><td>Send message (in chat input)</td></tr>
               <tr><td><code>Esc</code></td><td>Minimize expanded tile / close floating Notepad / close modal</td></tr>
@@ -387,7 +410,7 @@ export default function HowToPage() {
         <section id="persistence">
           <h2>Persistence &amp; privacy</h2>
           <ul>
-            <li><strong>Sessions and Notepad</strong> reset on page refresh — they are not persisted.</li>
+            <li><strong>Sessions and Notepad</strong> reset on page refresh by default. Enable <strong>STO</strong> in the header to persist sessions across refreshes (Notepad content is not persisted).</li>
             <li><strong>API key, model, hotkeys, FS settings, and FS toggles</strong> persist in <code>localStorage</code> and survive page refreshes.</li>
             <li><strong>Pancake's virtual filesystem</strong> (uploaded files) does not persist across page refreshes.</li>
             <li><strong>Local filesystem root</strong> is restored on startup if LFS was previously enabled.</li>

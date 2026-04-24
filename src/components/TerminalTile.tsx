@@ -60,14 +60,35 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
       return true
     })
 
-    const ws = new WebSocket('ws://127.0.0.1:4174')
+    const ws = new WebSocket('ws://127.0.0.1:4174/ws/terminal')
     wsRef.current = ws
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'create', sessionId, cwd }))
+      // Try reconnecting to an existing PTY first
+      ws.send(JSON.stringify({ type: 'reconnect', sessionId }))
     }
 
+    let connected = false
+
     ws.onmessage = (event) => {
+      // Handle JSON control messages from server
+      if (!connected && typeof event.data === 'string') {
+        try {
+          const msg = JSON.parse(event.data)
+          if (msg.type === 'reconnect_ok') {
+            connected = true
+            return
+          }
+          if (msg.type === 'reconnect_failed') {
+            // No existing PTY — create a new one
+            ws.send(JSON.stringify({ type: 'create', sessionId, cwd }))
+            connected = true
+            return
+          }
+        } catch {
+          // Not JSON — it's terminal data (e.g. buffered replay), write it
+        }
+      }
       term.write(event.data)
     }
 

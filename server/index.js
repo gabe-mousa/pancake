@@ -4,6 +4,7 @@ import cors from 'cors'
 import fs from 'fs'
 import path from 'path'
 import http from 'http'
+import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import { WebSocketServer } from 'ws'
 import pty from 'node-pty'
@@ -251,7 +252,9 @@ app.get('/fs/exists', (req, res) => {
 })
 
 // PTY management for Claude Code sessions
-const ptyMap = new Map()
+const ptyMap = new Map()        // sessionId → ptyProcess
+const ptyBuffers = new Map()    // sessionId → circular buffer of recent output (for reconnect replay)
+const PTY_BUFFER_SIZE = 50000   // max chars to buffer per PTY
 
 // Inject input into a Claude Code PTY session (used by agent interop)
 app.post('/terminal/input', (req, res) => {
@@ -263,25 +266,178 @@ app.post('/terminal/input', (req, res) => {
   res.json({ ok: true })
 })
 
+// AIO system prompt injected into Claude Code sessions
+const aioSystemPrompt = `You are running inside Pancake, a multi-session AI workbench. You can interact with other sessions using these HTTP endpoints on localhost:4174:
+
+- GET /aio/list-agents — List all sessions in the workspace
+- POST /aio/create-agent — Create a new session. Body: { "name": "string", "sessionType": "chat" | "claude-code", "cwd": "/optional/path" }
+- POST /aio/send-message — Send a message to another session. Body: { "agentId": "uuid", "message": "text" }
+
+Use curl to call these endpoints. Example: curl -s http://127.0.0.1:4174/aio/list-agents | jq`
+
+// --- AIO Control WebSocket + REST endpoints ---
+let controlWs = null                  // single frontend control connection
+const pendingAioRequests = new Map()  // requestId → { res, timer }
+
+function sendToControl(requestId, operation, params) {
+  if (!controlWs || controlWs.readyState !== 1 /* WebSocket.OPEN */) {
+    return null
+  }
+  controlWs.send(JSON.stringify({ type: 'aio_request', requestId, operation, params }))
+  return true
+}
+
+// AIO REST endpoints — proxy to frontend via control WS
+app.get('/aio/list-agents', (req, res) => {
+  const requestId = crypto.randomUUID()
+  if (!sendToControl(requestId, 'list_agents', {})) {
+    return res.status(503).json({ error: 'No frontend connected' })
+  }
+  const timer = setTimeout(() => {
+    pendingAioRequests.delete(requestId)
+    res.status(504).json({ error: 'Timeout waiting for frontend response' })
+  }, 10000)
+  pendingAioRequests.set(requestId, { res, timer })
+})
+
+app.post('/aio/create-agent', (req, res) => {
+  const { name, sessionType, cwd } = req.body || {}
+  const requestId = crypto.randomUUID()
+  if (!sendToControl(requestId, 'create_agent', { name, sessionType, cwd })) {
+    return res.status(503).json({ error: 'No frontend connected' })
+  }
+  const timer = setTimeout(() => {
+    pendingAioRequests.delete(requestId)
+    res.status(504).json({ error: 'Timeout waiting for frontend response' })
+  }, 10000)
+  pendingAioRequests.set(requestId, { res, timer })
+})
+
+app.post('/aio/send-message', (req, res) => {
+  const { agentId, message } = req.body || {}
+  if (!agentId || !message) return res.status(400).json({ error: 'agentId and message are required' })
+
+  // For CC targets with an active PTY, inject directly without going through the frontend
+  const ptyProcess = ptyMap.get(agentId)
+  if (ptyProcess) {
+    ptyProcess.write(message + '\n')
+    return res.json({ queued: true, agentId })
+  }
+
+  // For chat targets, forward to frontend
+  const requestId = crypto.randomUUID()
+  if (!sendToControl(requestId, 'send_message', { agentId, message })) {
+    return res.status(503).json({ error: 'No frontend connected' })
+  }
+  const timer = setTimeout(() => {
+    pendingAioRequests.delete(requestId)
+    res.status(504).json({ error: 'Timeout waiting for frontend response' })
+  }, 10000)
+  pendingAioRequests.set(requestId, { res, timer })
+})
+
 const httpServer = http.createServer(app)
 
-const wss = new WebSocketServer({ server: httpServer })
+// Path-based WebSocket routing
+const terminalWss = new WebSocketServer({ noServer: true })
+const controlWss = new WebSocketServer({ noServer: true })
 
-wss.on('connection', (ws) => {
+httpServer.on('upgrade', (request, socket, head) => {
+  const { pathname } = new URL(request.url, 'http://127.0.0.1')
+  if (pathname === '/ws/terminal') {
+    terminalWss.handleUpgrade(request, socket, head, (ws) => {
+      terminalWss.emit('connection', ws, request)
+    })
+  } else if (pathname === '/ws/control') {
+    controlWss.handleUpgrade(request, socket, head, (ws) => {
+      controlWss.emit('connection', ws, request)
+    })
+  } else {
+    socket.destroy()
+  }
+})
+
+// --- Control WebSocket handling ---
+controlWss.on('connection', (ws) => {
+  console.log('[AIO] Control WebSocket connected')
+  controlWs = ws
+
+  ws.on('message', (raw) => {
+    let msg
+    try { msg = JSON.parse(raw) } catch { return }
+
+    if (msg.type === 'aio_response' && msg.requestId) {
+      const pending = pendingAioRequests.get(msg.requestId)
+      if (pending) {
+        clearTimeout(pending.timer)
+        pendingAioRequests.delete(msg.requestId)
+        pending.res.json(msg.result ?? { ok: true })
+      }
+    }
+  })
+
+  ws.on('close', () => {
+    console.log('[AIO] Control WebSocket disconnected')
+    if (controlWs === ws) controlWs = null
+  })
+})
+
+// --- Terminal WebSocket handling ---
+// Track which WebSocket is attached to each PTY
+const ptyWsMap = new Map()      // sessionId → ws
+
+function attachWsToPty(ws, sid, ptyProcess) {
+  // Remove old listener if any
+  const oldDispose = ptyProcess._pancakeDispose
+  if (oldDispose) oldDispose()
+
+  const onData = (data) => {
+    // Buffer output for reconnect replay
+    let buf = ptyBuffers.get(sid) || ''
+    buf += data
+    if (buf.length > PTY_BUFFER_SIZE) buf = buf.slice(-PTY_BUFFER_SIZE)
+    ptyBuffers.set(sid, buf)
+
+    if (ws.readyState === ws.OPEN) ws.send(data)
+  }
+  ptyProcess.onData(onData)
+
+  ptyProcess._pancakeDispose = () => {
+    // node-pty doesn't expose removeListener, but replacing via attachWsToPty handles it
+  }
+
+  ptyWsMap.set(sid, ws)
+}
+
+terminalWss.on('connection', (ws) => {
   let sessionId = null
 
   ws.on('message', (raw) => {
     let msg
     try { msg = JSON.parse(raw) } catch { return }
 
-    if (msg.type === 'create') {
+    if (msg.type === 'reconnect') {
+      sessionId = msg.sessionId
+      const existing = ptyMap.get(sessionId)
+      if (existing) {
+        // Replay buffered output and reattach
+        const buf = ptyBuffers.get(sessionId)
+        if (buf) ws.send(buf)
+        attachWsToPty(ws, sessionId, existing)
+        ws.send(JSON.stringify({ type: 'reconnect_ok' }))
+      } else {
+        ws.send(JSON.stringify({ type: 'reconnect_failed' }))
+      }
+    } else if (msg.type === 'create') {
       sessionId = msg.sessionId
       const claudePath = process.env.CLAUDE_PATH || 'claude'
       const cwd = msg.cwd ? path.resolve(msg.cwd.replace(/^~/, process.env.HOME || '')) : process.cwd()
 
+      const ccArgs = ['--append-system-prompt', aioSystemPrompt]
+
       let ptyProcess
       try {
-        ptyProcess = pty.spawn(claudePath, [], {
+        ptyProcess = pty.spawn(claudePath, ccArgs, {
           name: 'xterm-color',
           cols: 80,
           rows: 24,
@@ -294,13 +450,13 @@ wss.on('connection', (ws) => {
       }
 
       ptyMap.set(sessionId, ptyProcess)
-
-      ptyProcess.onData((data) => {
-        if (ws.readyState === ws.OPEN) ws.send(data)
-      })
+      ptyBuffers.set(sessionId, '')
+      attachWsToPty(ws, sessionId, ptyProcess)
 
       ptyProcess.onExit(() => {
         ptyMap.delete(sessionId)
+        ptyBuffers.delete(sessionId)
+        ptyWsMap.delete(sessionId)
         if (ws.readyState === ws.OPEN) ws.close()
       })
     } else if (msg.type === 'input') {
@@ -313,10 +469,10 @@ wss.on('connection', (ws) => {
   })
 
   ws.on('close', () => {
+    // Do NOT kill the PTY on disconnect — keep it alive for reconnection
     if (sessionId) {
-      const p = ptyMap.get(sessionId)
-      if (p) { try { p.kill() } catch {} }
-      ptyMap.delete(sessionId)
+      const currentWs = ptyWsMap.get(sessionId)
+      if (currentWs === ws) ptyWsMap.delete(sessionId)
     }
   })
 })

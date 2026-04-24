@@ -144,13 +144,30 @@ export default function App() {
   const [config, setConfig] = useState<Config>(loadConfig)
   const [showConfig, setShowConfig] = useState(false)
   const [showNewSession, setShowNewSession] = useState(false)
-  const [sessions, setSessions] = useState<Session[]>([])
+  const [sessions, setSessions] = useState<Session[]>(() => {
+    if (localStorage.getItem('pancake_persist_sessions') === 'true') {
+      try {
+        const raw = localStorage.getItem('pancake_sessions_data')
+        if (raw) {
+          const parsed = JSON.parse(raw) as Session[]
+          return parsed.map(s => ({ ...s, isStreaming: false, status: 'Idle', unread: false }))
+        }
+      } catch {}
+    }
+    return []
+  })
   const [streamingContents, setStreamingContents] = useState<Record<string, string>>({})
   const [activeTileIndex, setActiveTileIndex] = useState(0)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [activeInputValue, setActiveInputValue] = useState('')
   const [page, setPage] = useState<Page>('sessions')
-  const [layout, setLayout] = useState<Layout>('wide')
+  const [layout, setLayout] = useState<Layout>(() => {
+    if (localStorage.getItem('pancake_persist_sessions') === 'true') {
+      const saved = localStorage.getItem('pancake_layout')
+      if (saved === 'wide' || saved === 'tall') return saved
+    }
+    return 'wide'
+  })
   const [notepadContent, setNotepadContent] = useState('')
   const [showNotepadWindow, setShowNotepadWindow] = useState(false)
   const [notepadPos, setNotepadPos] = useState({ x: 80, y: 80 })
@@ -162,6 +179,15 @@ export default function App() {
   const [defaultFsAccess, setDefaultFsAccess] = useState<FsAccess>(() => (localStorage.getItem('pancake_default_fs_access') as FsAccess) || 'none')
   const [pancakeEnabled, setPancakeEnabled] = useState(() => localStorage.getItem('pancake_virtual_fs_enabled') === 'true')
   const [localEnabled, setLocalEnabled] = useState(() => localStorage.getItem('pancake_fs_local_enabled') === 'true')
+  const [persistSessions, setPersistSessions] = useState(() => localStorage.getItem('pancake_persist_sessions') === 'true')
+  const [showHeaderHelp, setShowHeaderHelp] = useState(false)
+
+  useEffect(() => {
+    if (!showHeaderHelp) return
+    const close = () => setShowHeaderHelp(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [showHeaderHelp])
 
   const sessionsRef = useRef(sessions)
   sessionsRef.current = sessions
@@ -180,6 +206,8 @@ export default function App() {
 
   // Per-session abort controllers for kill-all
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
+  const controlWsRef = useRef<WebSocket | null>(null)
+  const doSendRef = useRef<((sessionId: string, text: string, fromAgent?: string) => Promise<void>) | null>(null)
 
   // On mount: restore local FS root from localStorage if enabled
   useEffect(() => {
@@ -196,6 +224,92 @@ export default function App() {
         .catch(() => {})
     } else {
       fetchFsRoot().then(root => { if (root) setFsRoot(root) })
+    }
+  }, [])
+
+  // --- AIO Control WebSocket ---
+  useEffect(() => {
+    function connect() {
+      const ws = new WebSocket('ws://127.0.0.1:4174/ws/control')
+      controlWsRef.current = ws
+
+      ws.onmessage = (event) => {
+        let msg: { type: string; requestId: string; operation: string; params: Record<string, unknown> }
+        try { msg = JSON.parse(event.data) } catch { return }
+        if (msg.type !== 'aio_request' || !msg.requestId) return
+
+        const respond = (result: unknown) => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'aio_response', requestId: msg.requestId, result }))
+          }
+        }
+
+        if (msg.operation === 'list_agents') {
+          const list = sessionsRef.current.map(s => ({
+            id: s.id,
+            name: s.name,
+            model: s.model,
+            status: s.status,
+            sessionType: s.sessionType,
+            isStreaming: s.isStreaming,
+            messageCount: s.messages.length,
+          }))
+          respond(list)
+        } else if (msg.operation === 'create_agent') {
+          const { name, sessionType, cwd } = msg.params as { name?: string; sessionType?: SessionType; cwd?: string }
+          const st = sessionType ?? 'chat'
+          const displayNumber = sessionsRef.current.length + 1
+          const effectiveModel = st === 'claude-code' ? 'claude code' : configRef.current.defaultModel
+          const session = createSession(
+            effectiveModel,
+            name ?? '',
+            displayNumber,
+            defaultFsAccess,
+            pancakeEnabled,
+            localEnabled,
+            st,
+            cwd,
+          )
+          setSessions(prev => [...prev, session])
+          respond({ id: session.id, name: session.name, model: session.model, sessionType: st })
+        } else if (msg.operation === 'send_message') {
+          const { agentId, message } = msg.params as { agentId: string; message: string }
+          const target = sessionsRef.current.find(s => s.id === agentId)
+          if (!target) {
+            respond({ error: `No session with id "${agentId}"` })
+          } else if (target.sessionType === 'claude-code') {
+            // CC targets are handled server-side; shouldn't arrive here, but handle gracefully
+            respond({ error: 'Claude Code targets are handled server-side via PTY injection' })
+          } else {
+            if (doSendRef.current) {
+              doSendRef.current(agentId, message as string, 'AIO endpoint')
+            }
+            respond({ queued: true, agentId, agentName: target.name })
+          }
+        } else {
+          respond({ error: `Unknown operation: ${msg.operation}` })
+        }
+      }
+
+      ws.onclose = () => {
+        controlWsRef.current = null
+        // Reconnect after a delay
+        setTimeout(connect, 3000)
+      }
+
+      ws.onerror = () => {
+        // onclose will fire after this, triggering reconnect
+      }
+    }
+
+    connect()
+    return () => {
+      const ws = controlWsRef.current
+      if (ws) {
+        ws.onclose = null  // prevent reconnect on intentional close
+        ws.close()
+        controlWsRef.current = null
+      }
     }
   }, [])
 
@@ -224,6 +338,42 @@ export default function App() {
       return next
     })
   }
+
+  function togglePersistSessions() {
+    setPersistSessions(prev => {
+      const next = !prev
+      localStorage.setItem('pancake_persist_sessions', String(next))
+      if (next) {
+        try {
+          localStorage.setItem('pancake_sessions_data', JSON.stringify(sessionsRef.current))
+          localStorage.setItem('pancake_layout', layout)
+        } catch (e) {
+          console.warn('[Pancake] Failed to save sessions:', e)
+        }
+      } else {
+        localStorage.removeItem('pancake_sessions_data')
+        localStorage.removeItem('pancake_layout')
+      }
+      return next
+    })
+  }
+
+  // Persist sessions to localStorage when enabled
+  const persistRef = useRef(persistSessions)
+  persistRef.current = persistSessions
+  useEffect(() => {
+    if (!persistRef.current) return
+    try {
+      localStorage.setItem('pancake_sessions_data', JSON.stringify(sessions))
+    } catch (e) {
+      console.warn('[Pancake] Failed to save sessions (localStorage may be full):', e)
+    }
+  }, [sessions])
+
+  useEffect(() => {
+    if (!persistRef.current) return
+    localStorage.setItem('pancake_layout', layout)
+  }, [layout])
 
   function killAllAgents() {
     abortControllersRef.current.forEach(ctrl => ctrl.abort())
@@ -576,6 +726,9 @@ export default function App() {
     )
   }, [])
 
+  // Keep doSendRef in sync for the control WS handler
+  doSendRef.current = doSend
+
   const sendMessage = useCallback(async (sessionId: string, text: string) => {
     const targetSession = sessionsRef.current.find(s => s.id === sessionId)
     if (targetSession?.sessionType === 'claude-code') return
@@ -601,6 +754,9 @@ export default function App() {
   function handleReset() {
     if (!window.confirm('Reset everything? This will clear all sessions, notes, and settings.')) return
     localStorage.removeItem('pancake_config')
+    localStorage.removeItem('pancake_sessions_data')
+    localStorage.removeItem('pancake_persist_sessions')
+    localStorage.removeItem('pancake_layout')
     setConfig(DEFAULT_CONFIG)
     setSessions([])
     setStreamingContents({})
@@ -611,6 +767,7 @@ export default function App() {
     setShowNotepadWindow(false)
     setNotepadPos({ x: 80, y: 80 })
     setVirtualFsFiles([])
+    setPersistSessions(false)
     setPage('sessions')
   }
 
@@ -666,6 +823,36 @@ export default function App() {
           </div>
         )}
         <div className="app-header-right">
+          <div className="header-help-wrap" onClick={e => e.stopPropagation()}>
+            <button
+              className="header-help-btn"
+              onClick={() => setShowHeaderHelp(prev => !prev)}
+              title="What do these buttons do?"
+            >?</button>
+            {showHeaderHelp && (
+              <div className="header-help-popover">
+                <div className="header-help-title">Toolbar Guide</div>
+                <dl className="header-help-list">
+                  <dt className="fs-quick-toggle fs-quick-toggle-on-pfs" style={{ pointerEvents: 'none' }}>PFS</dt>
+                  <dd>Pancake Filesystem — virtual in-browser file storage for sessions</dd>
+                  <dt className="fs-quick-toggle fs-quick-toggle-on-lfs" style={{ pointerEvents: 'none' }}>LFS</dt>
+                  <dd>Local Filesystem — lets sessions read/write real files on disk</dd>
+                  <dt className="fs-quick-toggle fs-quick-toggle-on-aio" style={{ pointerEvents: 'none' }}>AIO</dt>
+                  <dd>Agent Interop — lets sessions see, message, and create other sessions</dd>
+                  <dt className="fs-quick-toggle fs-quick-toggle-on-sto" style={{ pointerEvents: 'none' }}>STO</dt>
+                  <dd>Storage — persist sessions across page refreshes</dd>
+                  <dt style={{ pointerEvents: 'none', fontSize: '0.7rem' }}>LFS default</dt>
+                  <dd>Default local filesystem access level for new sessions (off / read / r+w / r+w+d)</dd>
+                  <dt style={{ pointerEvents: 'none' }}>■</dt>
+                  <dd>Stop — abort all currently streaming sessions</dd>
+                  <dt style={{ pointerEvents: 'none' }}>↺</dt>
+                  <dd>Reset — clear all sessions, notes, and settings</dd>
+                  <dt style={{ pointerEvents: 'none' }}>⚙</dt>
+                  <dd>Config — API key, auth mode, default model, hotkeys</dd>
+                </dl>
+              </div>
+            )}
+          </div>
           <button
             className={`fs-quick-toggle${pancakeEnabled ? ' fs-quick-toggle-on-pfs' : ''}`}
             onClick={togglePancakeEnabled}
@@ -686,6 +873,13 @@ export default function App() {
             title={`Agent Interoperability (default): ${config.defaultAgentInteropEnabled ? 'enabled' : 'disabled'}`}
           >
             AIO
+          </button>
+          <button
+            className={`fs-quick-toggle${persistSessions ? ' fs-quick-toggle-on-sto' : ''}`}
+            onClick={togglePersistSessions}
+            title={`Session persistence: ${persistSessions ? 'enabled — sessions survive page refresh' : 'disabled'}`}
+          >
+            STO
           </button>
           <DefaultFsSelector value={defaultFsAccess} onChange={handleDefaultFsChange} />
           <button

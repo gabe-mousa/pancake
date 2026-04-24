@@ -33,6 +33,10 @@ export default function NewSessionModal({ defaultModel, onConfirm, onClose }: Pr
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter') handleConfirm()
     if (e.key === 'Escape') onClose()
+    if (e.key === 'N' && e.ctrlKey && e.shiftKey) {
+      e.preventDefault()
+      setSessionType(prev => prev === 'chat' ? 'claude-code' : 'chat')
+    }
   }
 
   return (
@@ -41,12 +45,16 @@ export default function NewSessionModal({ defaultModel, onConfirm, onClose }: Pr
         <h2>New Session</h2>
 
         <label>
-          Session Type
+          <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            Session Type
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 400 }}>Ctrl+Shift+N to toggle</span>
+          </span>
           <div style={{ display: 'flex', borderRadius: '5px', border: '1px solid var(--brown-border)', overflow: 'hidden' }}>
             {(['chat', 'claude-code'] as const).map((type) => (
               <button
                 key={type}
                 type="button"
+                tabIndex={-1}
                 onClick={() => setSessionType(type)}
                 style={{
                   flex: 1,

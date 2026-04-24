@@ -89,7 +89,7 @@ export default function ConfigModal({ config, onSave, onClose }: Props) {
       <div ref={modalRef} className="modal modal-wide" onClick={e => e.stopPropagation()} onKeyDown={handleModalKeyDown} tabIndex={-1}>
         <h2>Config</h2>
 
-        <label as="div">
+        <div>
           Auth Mode
           <div style={{ display: 'flex', borderRadius: '5px', border: '1px solid var(--brown-border)', overflow: 'hidden' }}>
             {(['api-key', 'cybertron'] as const).map((mode) => (
@@ -119,7 +119,7 @@ export default function ConfigModal({ config, onSave, onClose }: Props) {
               Routes through Cybertron using your devbox credentials. Requires the Pancake server to be running in a devbox shell.
             </span>
           )}
-        </label>
+        </div>
 
         {authMode === 'api-key' && (
           <label>

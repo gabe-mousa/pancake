@@ -256,6 +256,35 @@ const ptyMap = new Map()        // sessionId → ptyProcess
 const ptyBuffers = new Map()    // sessionId → circular buffer of recent output (for reconnect replay)
 const PTY_BUFFER_SIZE = 50000   // max chars to buffer per PTY
 
+// Get the current working directory of a Claude Code PTY session
+app.get('/terminal/cwd', async (req, res) => {
+  const sessionId = req.query.sessionId
+  if (!sessionId) return res.status(400).json({ error: 'sessionId query param required' })
+  const p = ptyMap.get(sessionId)
+  if (!p) return res.status(404).json({ error: 'No active terminal session with that id' })
+  try {
+    const pid = p.pid
+    // Use lsof on macOS or readlink on Linux to find CWD of the process
+    const { execSync } = await import('child_process')
+    let cwd
+    try {
+      // Try Linux first (faster)
+      cwd = execSync(`readlink -f /proc/${pid}/cwd`, { encoding: 'utf8', timeout: 2000 }).trim()
+    } catch {
+      // Fall back to lsof for macOS
+      try {
+        const output = execSync(`lsof -p ${pid} -Fn 2>/dev/null | grep '^n/' | head -1`, { encoding: 'utf8', timeout: 2000 }).trim()
+        cwd = output.replace(/^n/, '')
+      } catch {
+        cwd = ''
+      }
+    }
+    res.json({ cwd: cwd || '' })
+  } catch {
+    res.json({ cwd: '' })
+  }
+})
+
 // Inject input into a Claude Code PTY session (used by agent interop)
 app.post('/terminal/input', (req, res) => {
   const { sessionId, data } = req.body
@@ -266,10 +295,55 @@ app.post('/terminal/input', (req, res) => {
   res.json({ ok: true })
 })
 
+// Helper: type text into a PTY character-by-character, then submit with Enter.
+// Sends Escape first to dismiss any autocomplete popup, types chars with delays
+// to avoid buffer issues, then sends \r (which Ink maps to 'return' key for submit).
+function typeIntoPty(p, message) {
+  return new Promise((resolve) => {
+    const chars = [...message]
+    let i = 0
+    function typeNext() {
+      if (i < chars.length) {
+        p.write(chars[i])
+        i++
+        setTimeout(typeNext, 10)
+      } else {
+        // All text typed — now dismiss autocomplete and submit
+        setTimeout(() => {
+          p.write('\x1b')  // Escape — dismiss autocomplete popup
+          setTimeout(() => {
+            p.write('\r')  // Carriage return — Ink maps to 'return' key → submit
+            resolve()
+          }, 150)
+        }, 200)
+      }
+    }
+    typeNext()
+  })
+}
+
+// Inject input into a Claude Code session by writing directly to the PTY.
+// Types each character with small delays, sends Escape to dismiss autocomplete,
+// then sends \r to submit.
+app.post('/terminal/type', async (req, res) => {
+  const { sessionId, message } = req.body
+  if (!sessionId || !message) return res.status(400).json({ error: 'sessionId and message are required' })
+  const p = ptyMap.get(sessionId)
+  if (!p) return res.status(404).json({ error: 'No active terminal session with that id' })
+
+  try {
+    await typeIntoPty(p, message)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
 // AIO system prompt injected into Claude Code sessions
 const aioSystemPrompt = `You are running inside Pancake, a multi-session AI workbench. You can interact with other sessions using these HTTP endpoints on localhost:4174:
 
 - GET /aio/list-agents — List all sessions in the workspace
+- GET /aio/read-agent?agentId=<uuid> — Read another session's content. Returns chat messages for chat sessions, or recent terminal output for Claude Code sessions.
 - POST /aio/create-agent — Create a new session. Body: { "name": "string", "sessionType": "chat" | "claude-code", "cwd": "/optional/path" }
 - POST /aio/send-message — Send a message to another session. Body: { "agentId": "uuid", "message": "text" }
 
@@ -313,15 +387,43 @@ app.post('/aio/create-agent', (req, res) => {
   pendingAioRequests.set(requestId, { res, timer })
 })
 
-app.post('/aio/send-message', (req, res) => {
+app.get('/aio/read-agent', (req, res) => {
+  const agentId = req.query.agentId
+  if (!agentId) return res.status(400).json({ error: 'agentId query param required' })
+
+  // For CC targets with a PTY buffer, return the recent terminal output
+  const buffer = ptyBuffers.get(agentId)
+  if (buffer !== undefined) {
+    // Strip ANSI escape sequences for readability
+    const clean = buffer.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '')
+    return res.json({ sessionType: 'claude-code', content: clean })
+  }
+
+  // For chat targets, proxy to frontend via control WS
+  const requestId = crypto.randomUUID()
+  if (!sendToControl(requestId, 'read_agent', { agentId })) {
+    return res.status(503).json({ error: 'No frontend connected' })
+  }
+  const timer = setTimeout(() => {
+    pendingAioRequests.delete(requestId)
+    res.status(504).json({ error: 'Timeout waiting for frontend response' })
+  }, 10000)
+  pendingAioRequests.set(requestId, { res, timer })
+})
+
+app.post('/aio/send-message', async (req, res) => {
   const { agentId, message } = req.body || {}
   if (!agentId || !message) return res.status(400).json({ error: 'agentId and message are required' })
 
-  // For CC targets with an active PTY, inject directly without going through the frontend
-  const ptyProcess = ptyMap.get(agentId)
-  if (ptyProcess) {
-    ptyProcess.write(message + '\n')
-    return res.json({ queued: true, agentId })
+  // For CC targets with an active PTY, type directly into the PTY
+  const p = ptyMap.get(agentId)
+  if (p) {
+    try {
+      await typeIntoPty(p, message)
+      return res.json({ ok: true, delivered: true })
+    } catch (err) {
+      return res.status(500).json({ error: String(err) })
+    }
   }
 
   // For chat targets, forward to frontend

@@ -21,6 +21,8 @@ interface Props {
   onActiveInputChange: (value: string) => void
   onFsAccessChange: (sessionId: string, level: FsAccess) => void
   onAgentInteropChange: (sessionId: string, value: boolean | null) => void
+  onCcCwdChange?: (sessionId: string, cwd: string) => void
+  pageVisible: boolean
   defaultAgentInteropEnabled: boolean
   unread: boolean
 }
@@ -52,19 +54,26 @@ function hotkeyMatches(e: KeyboardEvent, combo: string): boolean {
   )
 }
 
-export default function Tile({ session, streamingContent, isActive, isSelected, activeInputValue, mirroredInputValue, expandHotkey, hotkeys, onSendMessage, onRemove, onRename, onFocus, onActiveInputChange, onFsAccessChange, onAgentInteropChange, defaultAgentInteropEnabled, unread }: Props) {
+export default function Tile({ session, streamingContent, isActive, isSelected, activeInputValue, mirroredInputValue, expandHotkey, hotkeys, onSendMessage, onRemove, onRename, onFocus, onActiveInputChange, onFsAccessChange, onAgentInteropChange, onCcCwdChange, pageVisible, defaultAgentInteropEnabled, unread }: Props) {
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState(session.name)
   const [expanded, setExpanded] = useState(false)
   const [showFsMenu, setShowFsMenu] = useState(false)
   const [showInteropMenu, setShowInteropMenu] = useState(false)
 
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: session.id })
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: session.id,
+    // Disable layout shift animations — items are in separate containers so
+    // the default animations cause tiles to fly across groups
+    animateLayoutChanges: () => false,
+  })
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
+  const style: React.CSSProperties = {
+    // Only apply transform when this specific tile is being dragged,
+    // not when other tiles shift around
+    transform: isDragging ? CSS.Transform.toString(transform) : undefined,
+    transition: isDragging ? transition : undefined,
+    opacity: isDragging ? 0.4 : 1,
   }
 
   function commitName() {
@@ -148,6 +157,7 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
     window.addEventListener('click', onClickOutside)
     return () => window.removeEventListener('click', onClickOutside)
   }, [showInteropMenu])
+
 
   const effectiveInteropEnabled = session.agentInteropEnabled !== null
     ? session.agentInteropEnabled
@@ -251,7 +261,10 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
       </div>
       <div className="tile-status">
         {unread && <span className="tile-unread-dot" title="New response" />}
-        {session.status || 'Idle'}
+        {isCC && session.ccSessionCwd
+          ? <span className="tile-cwd" title={session.ccSessionCwd}>{session.ccSessionCwd}</span>
+          : (session.status || 'Idle')
+        }
       </div>
       {isCC ? (
         <TerminalTile
@@ -260,6 +273,9 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
           expanded={expanded}
           isActive={isActive}
           hotkeys={hotkeys}
+          pageVisible={pageVisible}
+          onCwdChange={onCcCwdChange ? (cwd) => onCcCwdChange(session.id, cwd) : undefined}
+          isDragging={isDragging}
         />
       ) : (
         <ChatWindow

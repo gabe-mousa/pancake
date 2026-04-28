@@ -8,7 +8,7 @@ import NotepadWindow from './components/NotepadWindow'
 import NotepadPage from './components/NotepadPage'
 import FilesystemPage from './pages/FilesystemPage'
 import { streamMessage } from './anthropic'
-import type { Session, Config, FsAccess, VirtualFile, AgentMeta, SessionType } from './types'
+import type { Session, SessionGroup, Config, FsAccess, VirtualFile, AgentMeta, SessionType } from './types'
 
 const DEFAULT_CONFIG: Config = {
   apiKey: '',
@@ -168,7 +168,12 @@ export default function App() {
     }
     return 'wide'
   })
-  const [notepadContent, setNotepadContent] = useState('')
+  const [notepadContent, setNotepadContent] = useState(() => {
+    if (localStorage.getItem('pancake_persist_sessions') === 'true') {
+      return localStorage.getItem('pancake_notepad') || ''
+    }
+    return ''
+  })
   const [showNotepadWindow, setShowNotepadWindow] = useState(false)
   const [notepadPos, setNotepadPos] = useState({ x: 80, y: 80 })
   const [virtualFsFiles, setVirtualFsFiles] = useState<VirtualFile[]>([])
@@ -180,6 +185,15 @@ export default function App() {
   const [pancakeEnabled, setPancakeEnabled] = useState(() => localStorage.getItem('pancake_virtual_fs_enabled') === 'true')
   const [localEnabled, setLocalEnabled] = useState(() => localStorage.getItem('pancake_fs_local_enabled') === 'true')
   const [persistSessions, setPersistSessions] = useState(() => localStorage.getItem('pancake_persist_sessions') === 'true')
+  const [groups, setGroups] = useState<SessionGroup[]>(() => {
+    if (localStorage.getItem('pancake_persist_sessions') === 'true') {
+      try {
+        const raw = localStorage.getItem('pancake_groups')
+        if (raw) return JSON.parse(raw) as SessionGroup[]
+      } catch {}
+    }
+    return []
+  })
   const [showHeaderHelp, setShowHeaderHelp] = useState(false)
 
   useEffect(() => {
@@ -195,6 +209,10 @@ export default function App() {
   activeTileIndexRef.current = activeTileIndex
   const configRef = useRef(config)
   configRef.current = config
+  const groupsRef = useRef(groups)
+  groupsRef.current = groups
+  const layoutRef = useRef(layout)
+  layoutRef.current = layout
   const notepadRef = useRef(notepadContent)
   notepadRef.current = notepadContent
   const virtualFsFilesRef = useRef(virtualFsFiles)
@@ -272,6 +290,16 @@ export default function App() {
           )
           setSessions(prev => [...prev, session])
           respond({ id: session.id, name: session.name, model: session.model, sessionType: st })
+        } else if (msg.operation === 'read_agent') {
+          const { agentId } = msg.params as { agentId: string }
+          const target = sessionsRef.current.find(s => s.id === agentId)
+          if (!target) {
+            respond({ error: `No session with id "${agentId}"` })
+          } else if (target.sessionType === 'claude-code') {
+            respond({ note: 'Claude Code terminal buffer is returned by the server directly.' })
+          } else {
+            respond({ sessionType: 'chat', messages: target.messages })
+          }
         } else if (msg.operation === 'send_message') {
           const { agentId, message } = msg.params as { agentId: string; message: string }
           const target = sessionsRef.current.find(s => s.id === agentId)
@@ -347,12 +375,16 @@ export default function App() {
         try {
           localStorage.setItem('pancake_sessions_data', JSON.stringify(sessionsRef.current))
           localStorage.setItem('pancake_layout', layout)
+          localStorage.setItem('pancake_notepad', notepadRef.current)
+          localStorage.setItem('pancake_groups', JSON.stringify(groups))
         } catch (e) {
           console.warn('[Pancake] Failed to save sessions:', e)
         }
       } else {
         localStorage.removeItem('pancake_sessions_data')
         localStorage.removeItem('pancake_layout')
+        localStorage.removeItem('pancake_notepad')
+        localStorage.removeItem('pancake_groups')
       }
       return next
     })
@@ -374,6 +406,16 @@ export default function App() {
     if (!persistRef.current) return
     localStorage.setItem('pancake_layout', layout)
   }, [layout])
+
+  useEffect(() => {
+    if (!persistRef.current) return
+    localStorage.setItem('pancake_notepad', notepadContent)
+  }, [notepadContent])
+
+  useEffect(() => {
+    if (!persistRef.current) return
+    localStorage.setItem('pancake_groups', JSON.stringify(groups))
+  }, [groups])
 
   function killAllAgents() {
     abortControllersRef.current.forEach(ctrl => ctrl.abort())
@@ -415,7 +457,13 @@ export default function App() {
   }
 
   function reorderSessions(updated: Session[]) {
+    // Preserve active session across reorder
+    const activeId = sessions[activeTileIndex]?.id
     setSessions(updated)
+    if (activeId) {
+      const newIndex = updated.findIndex(s => s.id === activeId)
+      if (newIndex !== -1) setActiveTileIndex(newIndex)
+    }
   }
 
   function setFsAccess(id: string, level: FsAccess) {
@@ -424,6 +472,27 @@ export default function App() {
 
   function setAgentInteropEnabled(id: string, value: boolean | null) {
     setSessions(prev => prev.map(s => s.id === id ? { ...s, agentInteropEnabled: value } : s))
+  }
+
+  function updateCcCwd(id: string, cwd: string) {
+    setSessions(prev => prev.map(s => s.id === id && s.ccSessionCwd !== cwd ? { ...s, ccSessionCwd: cwd } : s))
+  }
+
+  function addGroup(name: string) {
+    setGroups(prev => [...prev, { id: crypto.randomUUID(), name, collapsed: false }])
+  }
+
+  function removeGroup(groupId: string) {
+    setGroups(prev => prev.filter(g => g.id !== groupId))
+    setSessions(prev => prev.map(s => s.groupId === groupId ? { ...s, groupId: undefined } : s))
+  }
+
+  function toggleGroupCollapsed(groupId: string) {
+    setGroups(prev => prev.map(g => g.id === groupId ? { ...g, collapsed: !g.collapsed } : g))
+  }
+
+  function setSessionGroup(sessionId: string, groupId: string | undefined) {
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, groupId } : s))
   }
 
   function isInteropEnabled(session: Session): boolean {
@@ -458,17 +527,15 @@ export default function App() {
         if (!target) return { error: `No session with id "${agentId}"` }
         const agentName = target.name
 
-        // Claude Code terminal sessions: inject text directly into the PTY
+        // Claude Code terminal sessions: type directly into the PTY via server endpoint
         if (target.sessionType === 'claude-code') {
           try {
-            await fetch('http://127.0.0.1:4174/terminal/input', {
+            await fetch('http://127.0.0.1:4174/terminal/type', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sessionId: agentId, data: message + '\n' }),
+              body: JSON.stringify({ sessionId: agentId, message }),
             })
-          } catch (e) {
-            return { error: `Failed to inject into terminal "${agentName}": ${(e as Error).message}` }
-          }
+          } catch {}
           return { queued: true, agentName }
         }
 
@@ -559,6 +626,20 @@ export default function App() {
   }
 
 
+  // Compute the visual display order of sessions (matching TileGrid's render order).
+  // When groups exist: grouped sessions per group, then ungrouped. Otherwise: array order.
+  function getVisualOrder(sessions: Session[], groups: SessionGroup[]): Session[] {
+    if (groups.length === 0) return sessions
+    const order: Session[] = []
+    for (const g of groups) {
+      if (!g.collapsed) {
+        sessions.filter(s => s.groupId === g.id).forEach(s => order.push(s))
+      }
+    }
+    sessions.filter(s => !s.groupId || !groups.find(g => g.id === s.groupId)).forEach(s => order.push(s))
+    return order
+  }
+
   // Hotkeys: navigate and select sessions
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -584,48 +665,53 @@ export default function App() {
 
       if (count === 0) return
 
-      const COLS = 4
+      const COLS = layoutRef.current === 'tall' ? 2 : 4
+      const visual = getVisualOrder(sessions, groupsRef.current)
+
+      // Navigate using visual order: find active session's position in visual order,
+      // compute the target visual position, then set activeTileIndex to the target's
+      // position in the original sessions array.
+      function navigateVisual(dirFn: (visualIdx: number, visualCount: number) => number, select?: boolean) {
+        setActiveTileIndex(i => {
+          const activeSession = sessions[i]
+          if (!activeSession) return i
+          const visualIdx = visual.findIndex(s => s.id === activeSession.id)
+          if (visualIdx === -1) return i
+          const nextVisualIdx = dirFn(visualIdx, visual.length)
+          const nextSession = visual[nextVisualIdx]
+          if (!nextSession) return i
+          const nextArrayIdx = sessions.findIndex(s => s.id === nextSession.id)
+          if (select) {
+            setSelectedIds(s => { const n = new Set(s); n.add(activeSession.id); n.add(nextSession.id); return n })
+          }
+          return nextArrayIdx !== -1 ? nextArrayIdx : i
+        })
+      }
 
       if (eventMatchesHotkey(e, hotkeys.right)) {
         e.preventDefault()
-        setActiveTileIndex(i => (i + 1) % count)
+        navigateVisual((vi, vc) => (vi + 1) % vc)
       } else if (eventMatchesHotkey(e, hotkeys.left)) {
         e.preventDefault()
-        setActiveTileIndex(i => (i - 1 + count) % count)
+        navigateVisual((vi, vc) => (vi - 1 + vc) % vc)
       } else if (eventMatchesHotkey(e, hotkeys.down)) {
         e.preventDefault()
-        setActiveTileIndex(i => Math.min(i + COLS, count - 1))
+        navigateVisual((vi, vc) => Math.min(vi + COLS, vc - 1))
       } else if (eventMatchesHotkey(e, hotkeys.up)) {
         e.preventDefault()
-        setActiveTileIndex(i => Math.max(i - COLS, 0))
+        navigateVisual((vi) => Math.max(vi - COLS, 0))
       } else if (eventMatchesHotkey(e, hotkeys.selectRight)) {
         e.preventDefault()
-        setActiveTileIndex(i => {
-          const next = (i + 1) % count
-          setSelectedIds(s => { const n = new Set(s); n.add(sessions[i].id); n.add(sessions[next].id); return n })
-          return next
-        })
+        navigateVisual((vi, vc) => (vi + 1) % vc, true)
       } else if (eventMatchesHotkey(e, hotkeys.selectLeft)) {
         e.preventDefault()
-        setActiveTileIndex(i => {
-          const next = (i - 1 + count) % count
-          setSelectedIds(s => { const n = new Set(s); n.add(sessions[i].id); n.add(sessions[next].id); return n })
-          return next
-        })
+        navigateVisual((vi, vc) => (vi - 1 + vc) % vc, true)
       } else if (eventMatchesHotkey(e, hotkeys.selectDown)) {
         e.preventDefault()
-        setActiveTileIndex(i => {
-          const next = Math.min(i + COLS, count - 1)
-          setSelectedIds(s => { const n = new Set(s); n.add(sessions[i].id); n.add(sessions[next].id); return n })
-          return next
-        })
+        navigateVisual((vi, vc) => Math.min(vi + COLS, vc - 1), true)
       } else if (eventMatchesHotkey(e, hotkeys.selectUp)) {
         e.preventDefault()
-        setActiveTileIndex(i => {
-          const next = Math.max(i - COLS, 0)
-          setSelectedIds(s => { const n = new Set(s); n.add(sessions[i].id); n.add(sessions[next].id); return n })
-          return next
-        })
+        navigateVisual((vi) => Math.max(vi - COLS, 0), true)
       } else if (eventMatchesHotkey(e, hotkeys.focus)) {
         const active = sessions[activeTileIndexRef.current]
         if (active) {
@@ -757,6 +843,8 @@ export default function App() {
     localStorage.removeItem('pancake_sessions_data')
     localStorage.removeItem('pancake_persist_sessions')
     localStorage.removeItem('pancake_layout')
+    localStorage.removeItem('pancake_notepad')
+    localStorage.removeItem('pancake_groups')
     setConfig(DEFAULT_CONFIG)
     setSessions([])
     setStreamingContents({})
@@ -768,6 +856,7 @@ export default function App() {
     setNotepadPos({ x: 80, y: 80 })
     setVirtualFsFiles([])
     setPersistSessions(false)
+    setGroups([])
     setPage('sessions')
   }
 
@@ -896,13 +985,12 @@ export default function App() {
       </header>
 
       <main className="app-main">
-        {page === 'about' ? (
-          <AboutPage />
-        ) : page === 'how-to' ? (
-          <HowToPage />
-        ) : page === 'notepad' ? (
+        {page === 'about' && <AboutPage />}
+        {page === 'how-to' && <HowToPage />}
+        {page === 'notepad' && (
           <NotepadPage content={notepadContent} onChange={setNotepadContent} toggleHotkey={config.hotkeys.toggleNotepad} />
-        ) : page === 'filesystem' ? (
+        )}
+        {page === 'filesystem' && (
           <FilesystemPage
             virtualFsFiles={virtualFsFiles}
             onAddFiles={addVirtualFiles}
@@ -914,31 +1002,42 @@ export default function App() {
             localEnabled={localEnabled}
             onLocalToggle={toggleLocalEnabled}
           />
-        ) : sessions.length === 0 ? (
-          <div className="empty-state">
-            No sessions yet. Click + or press {config.hotkeys.newSession} to start one.
-          </div>
-        ) : (
-          <TileGrid
-            sessions={sessions}
-            streamingContents={streamingContents}
-            activeTileIndex={activeTileIndex}
-            selectedIds={selectedIds}
-            activeInputValue={activeInputValue}
-            expandHotkey={config.hotkeys.expandTile}
-            layout={layout}
-            hotkeys={config.hotkeys}
-            onSendMessage={sendMessage}
-            onRemove={removeSession}
-            onRename={renameSession}
-            onReorder={reorderSessions}
-            onFocusTile={focusTile}
-            onActiveInputChange={setActiveInputValue}
-            onFsAccessChange={setFsAccess}
-            onAgentInteropChange={setAgentInteropEnabled}
-            defaultAgentInteropEnabled={config.defaultAgentInteropEnabled}
-          />
         )}
+        {/* TileGrid stays mounted (hidden via CSS) to preserve terminal instances */}
+        <div className={`sessions-page${page !== 'sessions' ? ' sessions-page-hidden' : ''}`}>
+          {sessions.length === 0 ? (
+            <div className="empty-state">
+              No sessions yet. Click + or press {config.hotkeys.newSession} to start one.
+            </div>
+          ) : (
+            <TileGrid
+              sessions={sessions}
+              streamingContents={streamingContents}
+              activeTileIndex={activeTileIndex}
+              selectedIds={selectedIds}
+              activeInputValue={activeInputValue}
+              expandHotkey={config.hotkeys.expandTile}
+              layout={layout}
+              hotkeys={config.hotkeys}
+              groups={groups}
+              pageVisible={page === 'sessions'}
+              onSendMessage={sendMessage}
+              onRemove={removeSession}
+              onRename={renameSession}
+              onReorder={reorderSessions}
+              onFocusTile={focusTile}
+              onActiveInputChange={setActiveInputValue}
+              onFsAccessChange={setFsAccess}
+              onAgentInteropChange={setAgentInteropEnabled}
+              onCcCwdChange={updateCcCwd}
+              onAddGroup={addGroup}
+              onRemoveGroup={removeGroup}
+              onToggleGroupCollapsed={toggleGroupCollapsed}
+              onSetSessionGroup={setSessionGroup}
+              defaultAgentInteropEnabled={config.defaultAgentInteropEnabled}
+            />
+          )}
+        </div>
       </main>
 
       {page === 'sessions' && (

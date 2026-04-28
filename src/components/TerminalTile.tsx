@@ -10,6 +10,9 @@ interface Props {
   expanded: boolean
   isActive: boolean
   hotkeys: Hotkeys
+  pageVisible: boolean
+  onCwdChange?: (cwd: string) => void
+  isDragging?: boolean
 }
 
 function matchesHotkey(e: KeyboardEvent, combo: string): boolean {
@@ -24,11 +27,13 @@ function matchesHotkey(e: KeyboardEvent, combo: string): boolean {
   )
 }
 
-export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotkeys }: Props) {
+export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotkeys, pageVisible, onCwdChange, isDragging }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const isDraggingRef = useRef(false)
+  isDraggingRef.current = !!isDragging
 
   useEffect(() => {
     const term = new Terminal({
@@ -107,6 +112,7 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
     })
 
     const observer = new ResizeObserver(() => {
+      if (isDraggingRef.current) return
       fitAddon.fit()
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'resize', sessionId, cols: term.cols, rows: term.rows }))
@@ -116,8 +122,36 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
       observer.observe(containerRef.current)
     }
 
+    // Re-fit after sleep/minimize/tab switch
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible' && !isDraggingRef.current) {
+        setTimeout(() => {
+          if (isDraggingRef.current) return
+          fitAddon.fit()
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'resize', sessionId, cols: term.cols, rows: term.rows }))
+          }
+        }, 100)
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    // Poll CWD periodically
+    const cwdInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`http://127.0.0.1:4174/terminal/cwd?sessionId=${sessionId}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.cwd && onCwdChange) onCwdChange(data.cwd)
+        }
+      } catch {}
+    }, 3000)
+
     return () => {
       observer.disconnect()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      clearInterval(cwdInterval)
       ws.close()
       term.dispose()
     }
@@ -133,6 +167,19 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
     }
   }, [expanded])
 
+  // Re-fit terminal when returning to sessions page
+  useEffect(() => {
+    if (pageVisible && fitAddonRef.current && termRef.current) {
+      setTimeout(() => {
+        fitAddonRef.current?.fit()
+        if (wsRef.current?.readyState === WebSocket.OPEN && termRef.current) {
+          const term = termRef.current
+          wsRef.current.send(JSON.stringify({ type: 'resize', sessionId, cols: term.cols, rows: term.rows }))
+        }
+      }, 50)
+    }
+  }, [pageVisible])
+
   useEffect(() => {
     if (isActive) {
       termRef.current?.focus()
@@ -141,9 +188,24 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
     }
   }, [isActive])
 
+  // Re-fit terminal after drag ends
+  const prevDragging = useRef(false)
+  useEffect(() => {
+    if (prevDragging.current && !isDragging) {
+      setTimeout(() => {
+        fitAddonRef.current?.fit()
+        if (wsRef.current?.readyState === WebSocket.OPEN && termRef.current) {
+          const term = termRef.current
+          wsRef.current.send(JSON.stringify({ type: 'resize', sessionId, cols: term.cols, rows: term.rows }))
+        }
+      }, 50)
+    }
+    prevDragging.current = !!isDragging
+  }, [isDragging])
+
   return (
     <div className="terminal-window">
-      <div ref={containerRef} className="terminal-container" />
+      <div ref={containerRef} className={`terminal-container${isDragging ? ' terminal-dragging' : ''}`} />
     </div>
   )
 }

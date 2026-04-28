@@ -38,6 +38,7 @@ export default function HowToPage() {
               <li><a href="#interop-delete-confirm">Delete confirmation</a></li>
             </ul>
           </li>
+          <li><a href="#session-groups">Session groups</a></li>
           <li><a href="#layout">Layout modes</a></li>
           <li><a href="#notepad">Notepad</a></li>
           <li><a href="#header-controls">Header controls</a></li>
@@ -114,7 +115,7 @@ export default function HowToPage() {
             Claude Code sessions run the local Claude Code CLI (<code>claude</code>) inside a full PTY terminal rendered with xterm.js. The binary is resolved from your <code>PATH</code>, or you can set <code>CLAUDE_PATH</code> to override. They behave like a real terminal tab embedded in the grid.
           </p>
           <ul>
-            <li>Identified by the <strong>≥_</strong> badge in the tile header.</li>
+            <li>Identified by the <strong>≥_</strong> badge in the tile header. The current working directory of the PTY process is displayed in the status bar.</li>
             <li>All input goes directly to the PTY — type in the terminal just as you would in a dedicated terminal window.</li>
             <li>Pancake hotkeys (navigation, expand, etc.) still work: they are intercepted before reaching the PTY so they do not interfere with the terminal session.</li>
             <li>Click <strong>⊞</strong> or press <code>Ctrl+Shift+F</code> to expand — the terminal resizes automatically to fill the screen.</li>
@@ -280,8 +281,9 @@ export default function HowToPage() {
           </p>
           <ul>
             <li><code>GET /aio/list-agents</code> — returns a JSON array of all sessions with their id, name, model, status, and session type.</li>
+            <li><code>GET /aio/read-agent?agentId=uuid</code> — reads another session's content. For chat sessions, returns the full message history. For Claude Code sessions, returns the recent terminal output (ANSI codes stripped).</li>
             <li><code>POST /aio/create-agent</code> — creates a new session. Body: <code>{'{"name": "Worker", "sessionType": "claude-code", "cwd": "/path"}'}</code>. Returns the new session's id and name.</li>
-            <li><code>POST /aio/send-message</code> — sends a message to another session. Body: <code>{'{"agentId": "uuid", "message": "text"}'}</code>. For Claude Code targets, the message is injected directly into the PTY. For Chat targets, it triggers a normal message send.</li>
+            <li><code>POST /aio/send-message</code> — sends a message to another session. Body: <code>{'{"agentId": "uuid", "message": "text"}'}</code>. For Claude Code targets, the message is injected directly into the PTY and submitted automatically. For Chat targets, it triggers a normal message send.</li>
           </ul>
           <p>
             Example from inside a Claude Code session:
@@ -326,6 +328,22 @@ curl -s -X POST http://127.0.0.1:4174/aio/create-agent \\
           </ul>
         </section>
 
+        <section id="session-groups">
+          <h2>Session groups</h2>
+          <p>
+            Organize your sessions visually by creating named groups. Groups are purely aesthetic — they help you keep related sessions together without affecting any functionality.
+          </p>
+          <ul>
+            <li>Click <strong>+ Group</strong> above the session grid to create a new group. Type a name and press Enter.</li>
+            <li><strong>Drag sessions</strong> between groups by dragging a tile onto another group's area or onto a tile already in that group.</li>
+            <li>Click the <strong>▸/▾</strong> arrow to collapse or expand a group.</li>
+            <li><strong>Double-click</strong> a group name to rename it.</li>
+            <li>Click <strong>✕</strong> on a group header to delete the group — sessions move back to the ungrouped section.</li>
+            <li>Sessions not assigned to any group appear in an <strong>Ungrouped</strong> section at the bottom (only visible when groups exist).</li>
+            <li>Groups persist across page refreshes when <strong>STO</strong> is enabled.</li>
+          </ul>
+        </section>
+
         <section id="layout">
           <h2>Layout modes</h2>
           <p>
@@ -351,7 +369,7 @@ curl -s -X POST http://127.0.0.1:4174/aio/create-agent \\
             <li>Drag any <strong>edge or corner</strong> of the floating window to resize it freely. Minimum size is 220×180px.</li>
             <li>The floating window and the Notepad page share the same content — edits appear instantly in both.</li>
             <li>Click <strong>Preview</strong> to render as Markdown; click <strong>Edit</strong> to return to editing.</li>
-            <li>Content lives in memory only — it does not persist after a page refresh.</li>
+            <li>When <strong>STO</strong> (session persistence) is enabled, Notepad content persists across page refreshes. When STO is off, content lives in memory only.</li>
           </ul>
           <h3>Agent Notepad tools</h3>
           <ul>
@@ -410,7 +428,7 @@ curl -s -X POST http://127.0.0.1:4174/aio/create-agent \\
         <section id="persistence">
           <h2>Persistence &amp; privacy</h2>
           <ul>
-            <li><strong>Sessions and Notepad</strong> reset on page refresh by default. Enable <strong>STO</strong> in the header to persist sessions across refreshes (Notepad content is not persisted).</li>
+            <li><strong>Sessions, Notepad, and session groups</strong> reset on page refresh by default. Enable <strong>STO</strong> in the header to persist all of these across refreshes.</li>
             <li><strong>API key, model, hotkeys, FS settings, and FS toggles</strong> persist in <code>localStorage</code> and survive page refreshes.</li>
             <li><strong>Pancake's virtual filesystem</strong> (uploaded files) does not persist across page refreshes.</li>
             <li><strong>Local filesystem root</strong> is restored on startup if LFS was previously enabled.</li>

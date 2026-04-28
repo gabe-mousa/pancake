@@ -257,6 +257,14 @@ body {
   padding: var(--main-pad);
 }
 
+.sessions-page-hidden {
+  position: absolute;
+  left: -9999px;
+  width: 100%;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .empty-state {
   color: var(--brown-light);
   text-align: center;
@@ -265,6 +273,180 @@ body {
 }
 
 /* Tile Grid */
+/* Session groups */
+.tile-grid-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.group-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  flex-wrap: wrap;
+}
+
+.group-toolbar-tag-rm {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  padding: 0 1px;
+  line-height: 1;
+  opacity: 0.4;
+  transition: opacity 0.15s, color 0.15s;
+}
+.group-toolbar-tag-rm:hover {
+  opacity: 1;
+  color: #c44;
+}
+
+.group-add-btn {
+  font-size: 0.82rem;
+  padding: 5px 14px;
+  border: 1px solid var(--brown-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--brown-light);
+  cursor: pointer;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.group-add-btn:hover {
+  color: var(--brown);
+  border-color: var(--brown);
+  background: var(--brown-faint);
+}
+
+.group-new-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.group-name-input {
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  border: 1px solid var(--brown-border);
+  border-radius: 4px;
+  background: white;
+  color: var(--text);
+  outline: none;
+  width: 120px;
+}
+.group-name-input:focus {
+  border-color: var(--brown);
+}
+.group-name-input-inline {
+  width: 80px;
+}
+
+.group-new-confirm {
+  font-size: 0.72rem;
+  padding: 1px 5px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--brown-light);
+}
+.group-new-confirm:hover { color: var(--brown); }
+
+/* Session group — slightly opaque wrapper around grouped tiles */
+.session-group {
+  background: rgba(92,61,46,0.04);
+  border-radius: 8px;
+  padding: 6px;
+  transition: background 0.2s;
+}
+
+.session-group .tile-grid {
+  gap: clamp(6px, 1vw, 12px);
+}
+
+.session-group-ungrouped {
+  background: transparent;
+  padding: 0;
+}
+
+.group-area-drop-active {
+  background: rgba(196,168,130,0.12) !important;
+}
+
+.session-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px 4px;
+  user-select: none;
+}
+
+.session-group-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 0.78rem;
+  color: var(--brown-light);
+  line-height: 1;
+  transition: color 0.15s;
+}
+.session-group-toggle:hover {
+  color: var(--brown);
+}
+
+.session-group-name {
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--brown);
+  letter-spacing: 0.01em;
+}
+
+.session-group-name-ungrouped {
+  font-weight: 500;
+  opacity: 0.5;
+}
+
+.session-group-rm {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  padding: 1px 5px;
+  line-height: 1;
+  margin-left: auto;
+  transition: color 0.15s, border-color 0.15s;
+}
+.session-group-rm:hover {
+  color: #c44;
+  border-color: #fca5a5;
+  background: #fee2e2;
+}
+
+.group-empty {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 18px 12px;
+  opacity: 0.35;
+  font-style: italic;
+}
+
+/* Drag overlay tile ghost */
+.tile-drag-overlay {
+  width: 280px;
+  border: 1.5px solid var(--brown-border);
+  border-radius: 8px;
+  background: var(--cream);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+
+
 .tile-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -482,6 +664,20 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tile-cwd {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  unicode-bidi: plaintext;
 }
 
 /* Chat */
@@ -1813,6 +2009,10 @@ body {
 .terminal-container {
   flex: 1;
   overflow: hidden;
+}
+
+.terminal-dragging {
+  visibility: hidden;
 }
 
 /* xterm.js container overrides */

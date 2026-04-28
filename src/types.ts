@@ -33,6 +33,13 @@ export interface Session {
   unread: boolean
   sessionType: SessionType
   ccSessionCwd?: string
+  groupId?: string
+}
+
+export interface SessionGroup {
+  id: string
+  name: string
+  collapsed: boolean
 }
 
 export interface VirtualFile {

@@ -14,6 +14,7 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 
 - **Multi-session grid** — run up to 4 sessions per row, each with its own model and conversation history
 - **Claude Code sessions** — spawn full xterm.js terminal tiles running a local Claude Code CLI process alongside chat sessions
+- **Session persistence** — save and restore sessions across page refreshes with the **STO** toggle
 - **Layout modes** — switch between wide (4 columns) and tall (2 columns, larger tiles) from the nav bar
 - **Broadcasting** — select multiple tiles and send one message to all of them simultaneously
 - **Shared notepad** — a floating, resizable markdown scratchpad readable and writable by any agent or by you
@@ -22,9 +23,11 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 - **Local Filesystem (LFS)** — a bridge to a real directory on your machine, served by a local Express server Pancake starts automatically
 - **Drag and drop** — reorder session tiles by dragging
 - **Configurable hotkeys** — all keyboard shortcuts are remappable in the settings menu
-- **Flexible auth** — connect via Anthropic API key or a Cybertron devbox gateway
+- **Session indicators** — unread messages show an orange pulsing dot; PFS (green) and LFS (blue) dots indicate filesystem access per session
+- **Terminal reconnection** — Claude Code PTY processes survive WebSocket disconnections and automatically reattach with buffered output replay
+- **In-app documentation** — comprehensive Docs and About pages accessible from the nav bar
 - **Toolbar help** — click the **?** button in the header to see a quick reference of what each toolbar button does
-- **No backend** — runs entirely in your browser; your API key is stored in `localStorage` and never leaves your machine
+- **Flexible auth** — connect via Anthropic API key or a Cybertron devbox gateway
 
 ## Requirements
 
@@ -65,6 +68,10 @@ All shortcuts are configurable in the settings menu.
 
 Select multiple tiles using `Shift+Arrow keys` — selected tiles are highlighted in yellow. Typing and sending a message while tiles are selected delivers that message to all selected sessions at once.
 
+### Session persistence
+
+Click the **STO** button in the header to enable session persistence. When active, all sessions, their conversation history, and the current layout mode are saved to `localStorage` and restored automatically on page reload. Streaming status is not persisted — sessions resume in an idle state.
+
 ### Notepad
 
 The shared notepad (`Ctrl+Shift+X`) is a floating, resizable markdown editor visible to all sessions. Drag any edge or corner to resize it. Agents can read and write it as a tool during their responses, making it useful for passing context between agents, accumulating results from parallel runs, or keeping shared state across sessions.
@@ -77,7 +84,7 @@ Pancake provides two independent filesystems:
 
 **PFS (Pancake's Filesystem)** — an in-memory virtual filesystem. Upload files and folders for agents to access. Files live only while the page is open; nothing is read from or written to your machine. Toggle with the **PFS** button (green when on).
 
-**LFS (Local Filesystem)** — a bridge to a real directory on your machine served by a local Express server Pancake starts on port 4174. Set a root directory on the Filesystem page; agents are scoped to it. Access level is controlled per-session by the **FS badge** on each tile (off / read / r/w / r/w/d). Toggle with the **LFS** button (blue when on).
+**LFS (Local Filesystem)** — a bridge to a real directory on your machine served by a local Express server Pancake starts on port 4174. Set a root directory on the Filesystem page; agents are scoped to it. Access level is controlled per-session by the **FS badge** on each tile (off / read / r/w / r/w/d). Toggle with the **LFS** button (blue when on). LFS enforces path safety — symlinks that escape the root directory are rejected, binary files return an error with size info, and reads are capped at 1 MB.
 
 ### Agent interoperability
 
@@ -87,7 +94,7 @@ When enabled (the **AIO** button, lavender when on), agents can use five tools t
 - `read_agent_chat(id)` — read another session's full conversation history
 - `send_message_to_agent(id, message, await_response?)` — inject a message into another session
 - `create_agent(name?, model?, session_type?, cwd?)` — spawn a new session tile
-- `delete_agent(id)` — close and erase another session (requires confirmation)
+- `delete_agent(id)` — close and erase another session (requires confirmation; can be suppressed for the current session)
 
 Interop is enabled by default and can be toggled globally from the header or per-session from each tile's AIO badge.
 
@@ -122,7 +129,10 @@ cd node_modules/node-pty && npx node-gyp rebuild
 
 | Variable | Description |
 |---|---|
-| `CLAUDE_PATH` | Override the path to the Claude Code CLI binary. Defaults to `claude` (resolved from `PATH`). |
+| `PORT` | Override the Vite preview server port (default `4173`) |
+| `FS_PORT` | Override the filesystem/backend server port (default `4174`) |
+| `FS_ROOT` | Set the LFS root directory at startup |
+| `CLAUDE_PATH` | Override the path to the Claude Code CLI binary. Defaults to `claude` (resolved from `PATH`) |
 
 ### Scripts
 

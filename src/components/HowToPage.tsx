@@ -224,7 +224,7 @@ export default function HowToPage() {
               </ul>
             </li>
             <li>If LFS is disabled or the FS badge is "off", agents cannot access local files and will tell you so.</li>
-            <li>Requires <code>npm run dev</code> (development) or <code>npx pancake</code> (production) — both start the FS server automatically.</li>
+            <li>Requires <code>npm run dev</code> (development) or <code>npm start</code> (production) — both start the FS server automatically.</li>
             <li>Setting the root to <code>/</code> or your home directory will show a warning — use a specific project folder instead.</li>
           </ul>
 

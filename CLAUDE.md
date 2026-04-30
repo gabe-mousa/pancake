@@ -8,7 +8,7 @@ A browser-based multi-session Claude AI workbench. Run multiple chat and Claude 
 
 ```
 pancake/
-├── bin/pancake.js           # CLI entry point (npx pancake)
+├── bin/pancake.js           # CLI entry point (npm start)
 ├── server/index.js          # Express + WebSocket backend (port 4174)
 │                              - Local filesystem bridge (LFS)
 │                              - PTY management for Claude Code sessions

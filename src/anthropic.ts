@@ -425,7 +425,7 @@ async function executeTool(block: Anthropic.ToolUseBlock, ctx: StreamContext): P
     if (block.name === 'file_exists') return data.exists ? 'Yes, the path exists.' : 'No, the path does not exist.'
     return 'OK'
   } catch {
-    return 'Error: could not reach the local filesystem server. Is Pancake running with npx pancake?'
+    return 'Error: could not reach the local filesystem server. Is Pancake running with npm start?'
   }
 }
 

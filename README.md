@@ -5,10 +5,13 @@ Run multiple Claude AI agent sessions side by side in your browser.
 ## Quick start
 
 ```bash
-npx pancake
+git clone https://github.com/gabe-mousa/pancake.git
+cd pancake
+npm install
+npm start
 ```
 
-Pancake builds itself on first run, opens `http://localhost:4173` in your browser, and prompts you to enter your Anthropic API key. No installation required.
+Pancake builds itself on first run, starts the backend server, and opens `http://localhost:4173` in your browser. You'll be prompted to enter your Anthropic API key.
 
 ## Features
 
@@ -38,7 +41,7 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 
 ### Getting started
 
-1. Run `npx pancake`
+1. Clone the repo, install dependencies, and start (`npm start` — see [Quick start](#quick-start) above)
 2. Click **⚙** (top right) and enter your Anthropic API key (or set auth mode to Cybertron if using a devbox shell)
 3. Press **Ctrl+Shift+N** (or click **+**) to create a session
 4. Choose a session type (**Chat** or **Claude Code**) — press **Ctrl+Shift+N** again to toggle the type — then enter a name and optionally a model or working directory, and press **Enter** or click **Create**
@@ -110,14 +113,13 @@ Each session can use a different model. Select from the dropdown when creating a
 
 ## Local development
 
+For development with hot reload:
+
 ```bash
-git clone https://github.com/gabemousa/pancake
-cd pancake
-npm install
 npm run dev
 ```
 
-Then open `http://localhost:5173`.
+This starts the Vite dev server at `http://localhost:5173` and the backend server at port 4174.
 
 **Note:** `node-pty` (used for Claude Code terminal sessions) includes native bindings that must be compiled for your machine. If `npm install` doesn't build them automatically, run:
 
@@ -129,7 +131,7 @@ cd node_modules/node-pty && npx node-gyp rebuild
 
 | Variable | Description |
 |---|---|
-| `PORT` | Override the Vite preview server port (default `4173`) |
+| `PORT` | Override the production server port (default `4173`) |
 | `FS_PORT` | Override the filesystem/backend server port (default `4174`) |
 | `FS_ROOT` | Set the LFS root directory at startup |
 | `CLAUDE_PATH` | Override the path to the Claude Code CLI binary. Defaults to `claude` (resolved from `PATH`) |
@@ -141,7 +143,7 @@ cd node_modules/node-pty && npx node-gyp rebuild
 | `npm run dev` | Start Vite dev server + backend server with hot reload |
 | `npm run build` | TypeScript compile + Vite bundle to `dist/` |
 | `npm run preview` | Preview the production build locally |
-| `npm start` | Build if needed, then launch the production server |
+| `npm start` | Build if needed, then launch the production server (this is how users run Pancake) |
 
 ## License
 

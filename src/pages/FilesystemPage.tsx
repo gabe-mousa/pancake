@@ -429,7 +429,7 @@ function LocalFilesystem({ fsRoot, onFsRootChange, enabled, onToggle }: {
       onFsRootChange(data.resolved)
       localStorage.setItem('pancake_fs_root', data.resolved)
     } catch {
-      setError('Cannot reach the FS server. Use npm run dev or npx pancake to start it.')
+      setError('Cannot reach the FS server. Use npm run dev or npm start to start it.')
     }
   }
 
@@ -454,7 +454,7 @@ function LocalFilesystem({ fsRoot, onFsRootChange, enabled, onToggle }: {
         <div className="fs-section-body">
           {serverAvailable === false && (
             <div className="fs-error-banner">
-              FS server not available. Run <code>npm run dev</code> during development, or <code>npx pancake</code> in production, to start the local filesystem server.
+              FS server not available. Run <code>npm run dev</code> during development, or <code>npm start</code> in production, to start the local filesystem server.
             </div>
           )}
 

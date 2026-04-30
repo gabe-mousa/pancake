@@ -41,7 +41,7 @@ Pancake builds itself on first run, starts the backend server, and opens `http:/
 
 ### Getting started
 
-1. Clone the repo, install dependencies, and start (`npm start` — see [Quick start](#quick-start) above)
+1. Clone the repo, install dependencies with `npm install`, and start (`npm start` — see [Quick start](#quick-start) above)
 2. Click **⚙** (top right) and enter your Anthropic API key (or set auth mode to Cybertron if using a devbox shell)
 3. Press **Ctrl+Shift+N** (or click **+**) to create a session
 4. Choose a session type (**Chat** or **Claude Code**) — press **Ctrl+Shift+N** again to toggle the type — then enter a name and optionally a model or working directory, and press **Enter** or click **Create**

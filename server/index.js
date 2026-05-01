@@ -489,7 +489,9 @@ controlWss.on('connection', (ws) => {
 const ptyWsMap = new Map()      // sessionId → ws
 
 function attachWsToPty(ws, sid, ptyProcess) {
-  // Remove old listener if any
+  // Dispose the previous onData listener before attaching a new one.
+  // node-pty's onData() returns an IDisposable — we must call dispose() to
+  // unsubscribe, otherwise every reconnect accumulates another live listener.
   const oldDispose = ptyProcess._pancakeDispose
   if (oldDispose) oldDispose()
 
@@ -502,11 +504,8 @@ function attachWsToPty(ws, sid, ptyProcess) {
 
     if (ws.readyState === ws.OPEN) ws.send(data)
   }
-  ptyProcess.onData(onData)
-
-  ptyProcess._pancakeDispose = () => {
-    // node-pty doesn't expose removeListener, but replacing via attachWsToPty handles it
-  }
+  const disposable = ptyProcess.onData(onData)
+  ptyProcess._pancakeDispose = () => disposable.dispose()
 
   ptyWsMap.set(sid, ws)
 }

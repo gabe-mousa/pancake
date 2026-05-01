@@ -68,6 +68,20 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
     const ws = new WebSocket('ws://127.0.0.1:4174/ws/terminal')
     wsRef.current = ws
 
+    // Guard against callbacks firing after this effect is torn down
+    let active = true
+
+    // Send the current terminal dimensions to the PTY so it knows the real
+    // size. Called after the session is established (reconnect or new create),
+    // using rAF so the browser has finished layout before we measure.
+    function syncSize() {
+      requestAnimationFrame(() => {
+        if (!active || ws.readyState !== WebSocket.OPEN) return
+        fitAddon.fit()
+        ws.send(JSON.stringify({ type: 'resize', sessionId, cols: term.cols, rows: term.rows }))
+      })
+    }
+
     ws.onopen = () => {
       // Try reconnecting to an existing PTY first
       ws.send(JSON.stringify({ type: 'reconnect', sessionId }))
@@ -82,12 +96,18 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
           const msg = JSON.parse(event.data)
           if (msg.type === 'reconnect_ok') {
             connected = true
+            // Sync terminal dimensions with the PTY right after reconnect.
+            // The fitAddon.fit() earlier ran before the WebSocket was open,
+            // so the PTY still thinks it's 80×24.
+            syncSize()
             return
           }
           if (msg.type === 'reconnect_failed') {
             // No existing PTY — create a new one
             ws.send(JSON.stringify({ type: 'create', sessionId, cwd }))
             connected = true
+            // Same size-sync needed for newly created sessions
+            syncSize()
             return
           }
         } catch {
@@ -111,12 +131,24 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
       }
     })
 
+    // Debounce resize events so rapid size changes (e.g. during fullscreen
+    // expand or window resize) collapse into a single fit+resize. Without this,
+    // each intermediate size fires a PTY resize → SIGWINCH → Claude Code UI
+    // redraw, and two concurrent redraws interleave their ANSI sequences in
+    // xterm, producing clipped or repeated text.
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null
+
     const observer = new ResizeObserver(() => {
       if (isDraggingRef.current) return
-      fitAddon.fit()
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'resize', sessionId, cols: term.cols, rows: term.rows }))
-      }
+      if (resizeTimer !== null) clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        resizeTimer = null
+        if (!active) return
+        fitAddon.fit()
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'resize', sessionId, cols: term.cols, rows: term.rows }))
+        }
+      }, 50)
     })
     if (containerRef.current) {
       observer.observe(containerRef.current)
@@ -126,7 +158,7 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
     function handleVisibilityChange() {
       if (document.visibilityState === 'visible' && !isDraggingRef.current) {
         setTimeout(() => {
-          if (isDraggingRef.current) return
+          if (!active || isDraggingRef.current) return
           fitAddon.fit()
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'resize', sessionId, cols: term.cols, rows: term.rows }))
@@ -149,6 +181,8 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
     }, 3000)
 
     return () => {
+      active = false
+      if (resizeTimer !== null) clearTimeout(resizeTimer)
       observer.disconnect()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       clearInterval(cwdInterval)
@@ -158,13 +192,17 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
   }, [sessionId])
 
   useEffect(() => {
-    if (fitAddonRef.current) {
+    // Use rAF so the browser finishes layout at the new tile size before we
+    // measure the container. Without this, fitAddon.fit() can read stale
+    // dimensions and send the wrong cols/rows to the PTY.
+    requestAnimationFrame(() => {
+      if (!fitAddonRef.current || !termRef.current || !wsRef.current) return
       fitAddonRef.current.fit()
-      if (wsRef.current?.readyState === WebSocket.OPEN && termRef.current) {
+      if (wsRef.current.readyState === WebSocket.OPEN) {
         const term = termRef.current
         wsRef.current.send(JSON.stringify({ type: 'resize', sessionId, cols: term.cols, rows: term.rows }))
       }
-    }
+    })
   }, [expanded])
 
   // Re-fit terminal when returning to sessions page

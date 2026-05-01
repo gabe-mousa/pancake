@@ -145,7 +145,7 @@ export default function App() {
   const [showConfig, setShowConfig] = useState(false)
   const [showNewSession, setShowNewSession] = useState(false)
   const [sessions, setSessions] = useState<Session[]>(() => {
-    if (localStorage.getItem('pancake_persist_sessions') === 'true') {
+    if (localStorage.getItem('pancake_persist_sessions') !== 'false') {
       try {
         const raw = localStorage.getItem('pancake_sessions_data')
         if (raw) {
@@ -162,14 +162,14 @@ export default function App() {
   const [activeInputValue, setActiveInputValue] = useState('')
   const [page, setPage] = useState<Page>('sessions')
   const [layout, setLayout] = useState<Layout>(() => {
-    if (localStorage.getItem('pancake_persist_sessions') === 'true') {
+    if (localStorage.getItem('pancake_persist_sessions') !== 'false') {
       const saved = localStorage.getItem('pancake_layout')
       if (saved === 'wide' || saved === 'tall') return saved
     }
     return 'wide'
   })
   const [notepadContent, setNotepadContent] = useState(() => {
-    if (localStorage.getItem('pancake_persist_sessions') === 'true') {
+    if (localStorage.getItem('pancake_persist_sessions') !== 'false') {
       return localStorage.getItem('pancake_notepad') || ''
     }
     return ''
@@ -184,9 +184,9 @@ export default function App() {
   const [defaultFsAccess, setDefaultFsAccess] = useState<FsAccess>(() => (localStorage.getItem('pancake_default_fs_access') as FsAccess) || 'none')
   const [pancakeEnabled, setPancakeEnabled] = useState(() => localStorage.getItem('pancake_virtual_fs_enabled') === 'true')
   const [localEnabled, setLocalEnabled] = useState(() => localStorage.getItem('pancake_fs_local_enabled') === 'true')
-  const [persistSessions, setPersistSessions] = useState(() => localStorage.getItem('pancake_persist_sessions') === 'true')
+  const [persistSessions, setPersistSessions] = useState(() => localStorage.getItem('pancake_persist_sessions') !== 'false')
   const [groups, setGroups] = useState<SessionGroup[]>(() => {
-    if (localStorage.getItem('pancake_persist_sessions') === 'true') {
+    if (localStorage.getItem('pancake_persist_sessions') !== 'false') {
       try {
         const raw = localStorage.getItem('pancake_groups')
         if (raw) return JSON.parse(raw) as SessionGroup[]

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -13,6 +13,10 @@ interface Props {
   pageVisible: boolean
   onCwdChange?: (cwd: string) => void
   isDragging?: boolean
+  activeInputValue?: string | null
+  mirroredInputValue?: string | null
+  onActiveInputChange?: (value: string) => void
+  onSendMessage?: (text: string) => void
 }
 
 function matchesHotkey(e: KeyboardEvent, combo: string): boolean {
@@ -27,7 +31,7 @@ function matchesHotkey(e: KeyboardEvent, combo: string): boolean {
   )
 }
 
-export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotkeys, pageVisible, onCwdChange, isDragging }: Props) {
+export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotkeys, pageVisible, onCwdChange, isDragging, activeInputValue, mirroredInputValue, onActiveInputChange, onSendMessage }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -203,8 +207,38 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
     prevDragging.current = !!isDragging
   }, [isDragging])
 
+  const isBroadcastActive = activeInputValue !== null
+  const isBroadcastMirrored = !isBroadcastActive && mirroredInputValue !== null
+  const showBroadcastBar = isBroadcastActive || isBroadcastMirrored
+
+  function handleBroadcastKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      const text = (activeInputValue ?? '').trim()
+      if (text) onSendMessage?.(text)
+    }
+  }
+
   return (
     <div className="terminal-window">
+      {showBroadcastBar && (
+        <div className={`terminal-broadcast-bar${isBroadcastMirrored ? ' terminal-broadcast-bar-mirrored' : ''}`}>
+          <input
+            className="terminal-broadcast-input"
+            placeholder="Broadcast to selected sessions..."
+            value={isBroadcastActive ? (activeInputValue ?? '') : (mirroredInputValue ?? '')}
+            readOnly={isBroadcastMirrored}
+            onChange={isBroadcastActive ? e => onActiveInputChange?.(e.target.value) : undefined}
+            onKeyDown={isBroadcastActive ? handleBroadcastKeyDown : undefined}
+          />
+          {isBroadcastActive && (
+            <button
+              className="terminal-broadcast-send"
+              onClick={() => { const text = (activeInputValue ?? '').trim(); if (text) onSendMessage?.(text) }}
+              title="Broadcast to selected sessions"
+            >↵</button>
+          )}
+        </div>
+      )}
       <div ref={containerRef} className={`terminal-container${isDragging ? ' terminal-dragging' : ''}`} />
     </div>
   )

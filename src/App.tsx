@@ -851,19 +851,30 @@ export default function App() {
   doSendRef.current = doSend
 
   const sendMessage = useCallback(async (sessionId: string, text: string) => {
-    const targetSession = sessionsRef.current.find(s => s.id === sessionId)
-    if (targetSession?.sessionType === 'claude-code') return
-    if (configRef.current.authMode !== 'cybertron' && !configRef.current.apiKey) {
+    const targets = selectedIds.size > 0
+      ? Array.from(new Set([...selectedIds, sessionId]))
+      : [sessionId]
+    const hasChatTargets = targets.some(id => {
+      const s = sessionsRef.current.find(s => s.id === id)
+      return s?.sessionType !== 'claude-code'
+    })
+    if (hasChatTargets && configRef.current.authMode !== 'cybertron' && !configRef.current.apiKey) {
       setShowConfig(true)
       return
     }
     setActiveInputValue('')
-    const targets = selectedIds.size > 0
-      ? Array.from(new Set([...selectedIds, sessionId]))
-      : [sessionId]
     setSessions(prev => prev.map(s => targets.includes(s.id) ? { ...s, unread: false } : s))
     for (const id of targets) {
-      doSend(id, text)
+      const sess = sessionsRef.current.find(s => s.id === id)
+      if (sess?.sessionType === 'claude-code') {
+        fetch('http://127.0.0.1:4174/terminal/type', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: id, message: text }),
+        }).catch(() => {})
+      } else {
+        doSend(id, text)
+      }
     }
   }, [selectedIds, doSend])
 

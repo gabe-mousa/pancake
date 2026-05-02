@@ -276,6 +276,10 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
           pageVisible={pageVisible}
           onCwdChange={onCcCwdChange ? (cwd) => onCcCwdChange(session.id, cwd) : undefined}
           isDragging={isDragging}
+          activeInputValue={activeInputValue}
+          mirroredInputValue={mirroredInputValue}
+          onActiveInputChange={onActiveInputChange}
+          onSendMessage={text => onSendMessage(session.id, text)}
         />
       ) : (
         <ChatWindow

@@ -2015,6 +2015,48 @@ body {
   visibility: hidden;
 }
 
+.terminal-broadcast-bar {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--brown-border);
+  background: var(--cream);
+}
+
+.terminal-broadcast-bar-mirrored {
+  background: #fef3b0;
+}
+
+.terminal-broadcast-input {
+  flex: 1;
+  border: none;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+  background: transparent;
+  color: var(--text);
+  outline: none;
+  font-family: inherit;
+}
+
+.terminal-broadcast-input::placeholder {
+  color: var(--brown-border);
+  font-style: italic;
+}
+
+.terminal-broadcast-send {
+  background: none;
+  border: none;
+  color: var(--brown);
+  font-size: 1rem;
+  padding: 4px 8px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.terminal-broadcast-send:hover {
+  opacity: 1;
+}
+
 /* xterm.js container overrides */
 .xterm { height: 100%; padding: 4px 6px; }
 .xterm-viewport { overflow-y: hidden !important; }

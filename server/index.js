@@ -339,15 +339,28 @@ app.post('/terminal/type', async (req, res) => {
   }
 })
 
-// AIO system prompt injected into Claude Code sessions
-const aioSystemPrompt = `You are running inside Pancake, a multi-session AI workbench. You can interact with other sessions using these HTTP endpoints on localhost:4174:
+// AIO system prompt injected into Claude Code sessions (includes this session's own ID)
+function buildAioSystemPrompt(sessionId) {
+  return `You are running inside Pancake, a multi-session AI workbench. Your session ID is: ${sessionId}
 
+You can interact with the workspace using these HTTP endpoints on localhost:4174:
+
+Agent interop:
 - GET /aio/list-agents — List all sessions in the workspace
-- GET /aio/read-agent?agentId=<uuid> — Read another session's content. Returns chat messages for chat sessions, or recent terminal output for Claude Code sessions.
+- GET /aio/read-agent?agentId=<uuid> — Read another session's content
 - POST /aio/create-agent — Create a new session. Body: { "name": "string", "sessionType": "chat" | "claude-code", "cwd": "/optional/path" }
 - POST /aio/send-message — Send a message to another session. Body: { "agentId": "uuid", "message": "text" }
 
+Shared notepad:
+- GET /aio/read-notepad — Read the current contents of the shared notepad
+- POST /aio/write-notepad — Overwrite the notepad. Body: { "content": "text" }
+- POST /aio/delete-notepad — Clear the notepad entirely
+
+Session management:
+- POST /aio/delete-self — Close and remove this session from the workspace. Body: { "sessionId": "${sessionId}" }
+
 Use curl to call these endpoints. Example: curl -s http://127.0.0.1:4174/aio/list-agents | jq`
+}
 
 // --- AIO Control WebSocket + REST endpoints ---
 let controlWs = null                  // single frontend control connection
@@ -429,6 +442,58 @@ app.post('/aio/send-message', async (req, res) => {
   // For chat targets, forward to frontend
   const requestId = crypto.randomUUID()
   if (!sendToControl(requestId, 'send_message', { agentId, message })) {
+    return res.status(503).json({ error: 'No frontend connected' })
+  }
+  const timer = setTimeout(() => {
+    pendingAioRequests.delete(requestId)
+    res.status(504).json({ error: 'Timeout waiting for frontend response' })
+  }, 10000)
+  pendingAioRequests.set(requestId, { res, timer })
+})
+
+app.get('/aio/read-notepad', (req, res) => {
+  const requestId = crypto.randomUUID()
+  if (!sendToControl(requestId, 'read_notepad', {})) {
+    return res.status(503).json({ error: 'No frontend connected' })
+  }
+  const timer = setTimeout(() => {
+    pendingAioRequests.delete(requestId)
+    res.status(504).json({ error: 'Timeout waiting for frontend response' })
+  }, 10000)
+  pendingAioRequests.set(requestId, { res, timer })
+})
+
+app.post('/aio/write-notepad', (req, res) => {
+  const { content } = req.body || {}
+  if (content === undefined) return res.status(400).json({ error: 'content is required' })
+  const requestId = crypto.randomUUID()
+  if (!sendToControl(requestId, 'write_notepad', { content })) {
+    return res.status(503).json({ error: 'No frontend connected' })
+  }
+  const timer = setTimeout(() => {
+    pendingAioRequests.delete(requestId)
+    res.status(504).json({ error: 'Timeout waiting for frontend response' })
+  }, 10000)
+  pendingAioRequests.set(requestId, { res, timer })
+})
+
+app.post('/aio/delete-notepad', (req, res) => {
+  const requestId = crypto.randomUUID()
+  if (!sendToControl(requestId, 'delete_notepad', {})) {
+    return res.status(503).json({ error: 'No frontend connected' })
+  }
+  const timer = setTimeout(() => {
+    pendingAioRequests.delete(requestId)
+    res.status(504).json({ error: 'Timeout waiting for frontend response' })
+  }, 10000)
+  pendingAioRequests.set(requestId, { res, timer })
+})
+
+app.post('/aio/delete-self', (req, res) => {
+  const { sessionId } = req.body || {}
+  if (!sessionId) return res.status(400).json({ error: 'sessionId is required' })
+  const requestId = crypto.randomUUID()
+  if (!sendToControl(requestId, 'delete_self', { sessionId })) {
     return res.status(503).json({ error: 'No frontend connected' })
   }
   const timer = setTimeout(() => {
@@ -535,7 +600,7 @@ terminalWss.on('connection', (ws) => {
       const claudePath = process.env.CLAUDE_PATH || 'claude'
       const cwd = msg.cwd ? path.resolve(msg.cwd.replace(/^~/, process.env.HOME || '')) : process.cwd()
 
-      const ccArgs = ['--append-system-prompt', aioSystemPrompt]
+      const ccArgs = ['--append-system-prompt', buildAioSystemPrompt(sessionId)]
 
       let ptyProcess
       try {

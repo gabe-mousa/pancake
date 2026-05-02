@@ -17,8 +17,8 @@ Pancake builds itself on first run, opens `http://localhost:4173` in your browse
 - **Session persistence** — save and restore sessions across page refreshes with the **STO** toggle
 - **Layout modes** — switch between wide (4 columns) and tall (2 columns, larger tiles) from the nav bar
 - **Broadcasting** — select multiple tiles and send one message to all of them simultaneously
-- **Shared notepad** — a floating, resizable markdown scratchpad readable and writable by any agent or by you
-- **Agent interoperability** — agents can list, message, create, and delete other sessions autonomously via tool calls. Claude Code sessions can also use AIO via REST endpoints (`curl`)
+- **Shared notepad** — a floating, resizable markdown scratchpad readable, writable, and clearable by any agent (chat or Claude Code) or by you
+- **Agent interoperability** — agents can list, message, create, delete other sessions, and close themselves autonomously via tool calls. Claude Code sessions use AIO via REST endpoints (`curl`)
 - **Pancake's Filesystem (PFS)** — an in-browser virtual filesystem; upload files and folders for agents to read and write
 - **Local Filesystem (LFS)** — a bridge to a real directory on your machine, served by a local Express server Pancake starts automatically
 - **Drag and drop** — reorder session tiles by dragging
@@ -74,7 +74,9 @@ Click the **STO** button in the header to enable session persistence. When activ
 
 ### Notepad
 
-The shared notepad (`Ctrl+Shift+X`) is a floating, resizable markdown editor visible to all sessions. Drag any edge or corner to resize it. Agents can read and write it as a tool during their responses, making it useful for passing context between agents, accumulating results from parallel runs, or keeping shared state across sessions.
+The shared notepad (`Ctrl+Shift+X`) is a floating, resizable markdown editor visible to all sessions. Drag any edge or corner to resize it. Agents can read, write, and clear it during their responses, making it useful for passing context between agents, accumulating results from parallel runs, or keeping shared state across sessions.
+
+Chat sessions use the `read_notepad`, `write_notepad`, and `delete_notepad` tools. Claude Code sessions access the same notepad via REST endpoints (`GET /aio/read-notepad`, `POST /aio/write-notepad`, `POST /aio/delete-notepad`).
 
 The full-page Notepad editor is also accessible from the **Notepad** nav link.
 
@@ -88,21 +90,27 @@ Pancake provides two independent filesystems:
 
 ### Agent interoperability
 
-When enabled (the **AIO** button, lavender when on), agents can use five tools to interact with other sessions:
+When enabled (the **AIO** button, lavender when on), agents can use seven tools to interact with other sessions:
 
 - `list_agents` — list all open sessions
 - `read_agent_chat(id)` — read another session's full conversation history
 - `send_message_to_agent(id, message, await_response?)` — inject a message into another session
 - `create_agent(name?, model?, session_type?, cwd?)` — spawn a new session tile
 - `delete_agent(id)` — close and erase another session (requires confirmation; can be suppressed for the current session)
+- `delete_notepad` — clear the shared notepad entirely
+- `delete_self` — close and remove the calling session (takes effect after the current response finishes; no confirmation required)
 
 Interop is enabled by default and can be toggled globally from the header or per-session from each tile's AIO badge.
 
-Claude Code sessions also have access to AIO via REST endpoints on the Pancake server. CC sessions are automatically informed about these endpoints when they start and can call them with `curl`:
+Claude Code sessions access AIO and the shared notepad via REST endpoints on the Pancake server. CC sessions are automatically informed about these endpoints (including their own session ID) when they start and can call them with `curl`:
 
 - `GET /aio/list-agents` — list all sessions
 - `POST /aio/create-agent` — create a new session
 - `POST /aio/send-message` — send a message to another session
+- `GET /aio/read-notepad` — read the shared notepad
+- `POST /aio/write-notepad` — overwrite the shared notepad
+- `POST /aio/delete-notepad` — clear the shared notepad
+- `POST /aio/delete-self` — close and remove this session
 
 ### Models
 

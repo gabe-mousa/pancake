@@ -23,6 +23,11 @@ const NOTEPAD_TOOLS: Anthropic.Tool[] = [
       required: ['content'],
     },
   },
+  {
+    name: 'delete_notepad',
+    description: 'Clear the shared notepad entirely.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
 ]
 
 const FS_READ_TOOLS: Anthropic.Tool[] = [
@@ -158,6 +163,11 @@ const AGENT_INTEROP_TOOLS: Anthropic.Tool[] = [
       required: ['agent_id'],
     },
   },
+  {
+    name: 'delete_self',
+    description: 'Close and remove this session from the Pancake workspace. The session will be deleted after the current response finishes.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
 ]
 
 const VIRTUAL_FS_TOOLS: Anthropic.Tool[] = [
@@ -206,6 +216,7 @@ export interface AgentInteropContext {
   sendMessageToAgent: (agentId: string, message: string, awaitResponse: boolean) => Promise<{ queued: true; agentName: string } | { response: string; agentName: string } | { error: string }>
   createAgent: (name?: string, model?: string, sessionType?: SessionType, cwd?: string) => Promise<AgentMeta | { error: string }>
   deleteAgent: (agentId: string) => Promise<{ success: true } | { error: string }>
+  deleteSelf: () => Promise<{ success: true }>
 }
 
 export interface StreamContext {
@@ -291,9 +302,11 @@ function buildSystemPrompt(ctx: StreamContext): string | undefined {
       `- read_agent_chat — read another agent's conversation history (Claude Code sessions have no message history; use send_message_to_agent to communicate with them)\n` +
       `- send_message_to_agent — send a message to another agent. For chat agents: triggers a reply (set await_response: true to wait). For Claude Code sessions: injects the text directly into the terminal as keyboard input.\n` +
       `- create_agent — spawn a new session. Use session_type: "claude-code" to open a Claude Code terminal (optionally pass cwd for its working directory). Use session_type: "chat" or omit for a normal chat agent.\n` +
-      `- delete_agent — close and remove an agent session (works for both chat and Claude Code sessions)\n\n` +
+      `- delete_agent — close and remove another agent session (works for both chat and Claude Code sessions)\n` +
+      `- delete_notepad — clear the shared notepad entirely\n` +
+      `- delete_self — close and remove this session from the workspace (takes effect after the current response finishes)\n\n` +
       `Important constraints:\n` +
-      `- You cannot message or delete yourself.\n` +
+      `- You cannot message or delete yourself via delete_agent (use delete_self instead).\n` +
       `- You cannot message a chat agent that is currently streaming (isStreaming: true). Use list_agents to check status first, then retry. Claude Code sessions can always receive input.\n` +
       `- delete_agent may trigger a user confirmation prompt; if the user cancels, the tool will return an error.`
     )
@@ -331,6 +344,10 @@ async function executeTool(block: Anthropic.ToolUseBlock, ctx: StreamContext): P
   if (block.name === 'write_notepad') {
     ctx.setNotepad(input.content ?? '')
     return 'Notepad updated.'
+  }
+  if (block.name === 'delete_notepad') {
+    ctx.setNotepad('')
+    return 'Notepad cleared.'
   }
 
   // Virtual filesystem tools
@@ -395,6 +412,10 @@ async function executeTool(block: Anthropic.ToolUseBlock, ctx: StreamContext): P
     const result = await ctx.agentInterop.deleteAgent(input.agent_id)
     if ('error' in result) return `Error: ${result.error}`
     return 'Agent deleted.'
+  }
+  if (ctx.agentInterop && block.name === 'delete_self') {
+    await ctx.agentInterop.deleteSelf()
+    return 'This session will be closed after the current response finishes.'
   }
 
   // Local filesystem tools — all go via the FS bridge server

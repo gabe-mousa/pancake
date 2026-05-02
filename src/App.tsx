@@ -226,6 +226,8 @@ export default function App() {
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map())
   const controlWsRef = useRef<WebSocket | null>(null)
   const doSendRef = useRef<((sessionId: string, text: string, fromAgent?: string) => Promise<void>) | null>(null)
+  // Sessions that have requested self-deletion; removed from UI after stream finishes
+  const selfDeleteSetRef = useRef<Set<string>>(new Set())
 
   // On mount: restore local FS root from localStorage if enabled
   useEffect(() => {
@@ -313,6 +315,24 @@ export default function App() {
               doSendRef.current(agentId, message as string, 'AIO endpoint')
             }
             respond({ queued: true, agentId, agentName: target.name })
+          }
+        } else if (msg.operation === 'read_notepad') {
+          respond({ content: notepadRef.current || '' })
+        } else if (msg.operation === 'write_notepad') {
+          const { content } = msg.params as { content: string }
+          setNotepadContent(content ?? '')
+          respond({ ok: true })
+        } else if (msg.operation === 'delete_notepad') {
+          setNotepadContent('')
+          respond({ ok: true })
+        } else if (msg.operation === 'delete_self') {
+          const { sessionId: targetId } = msg.params as { sessionId: string }
+          const target = sessionsRef.current.find(s => s.id === targetId)
+          if (!target) {
+            respond({ error: `No session with id "${targetId}"` })
+          } else {
+            removeSession(targetId)
+            respond({ ok: true })
           }
         } else {
           respond({ error: `Unknown operation: ${msg.operation}` })
@@ -598,6 +618,11 @@ export default function App() {
           })
         })
       },
+
+      deleteSelf: async () => {
+        selfDeleteSetRef.current.add(callerSessionId)
+        return { success: true }
+      },
     }
   }
 
@@ -768,6 +793,11 @@ export default function App() {
       (fullText) => {
         abortControllersRef.current.delete(sessionId)
         setStreamingContents(prev => ({ ...prev, [sessionId]: '' }))
+        if (selfDeleteSetRef.current.has(sessionId)) {
+          selfDeleteSetRef.current.delete(sessionId)
+          removeSession(sessionId)
+          return
+        }
         setSessions(prev => prev.map(s => {
           if (s.id !== sessionId) return s
           const isActive = sessionsRef.current.indexOf(s) === activeTileIndexRef.current
@@ -783,6 +813,11 @@ export default function App() {
       (err) => {
         abortControllersRef.current.delete(sessionId)
         setStreamingContents(prev => ({ ...prev, [sessionId]: '' }))
+        if (selfDeleteSetRef.current.has(sessionId)) {
+          selfDeleteSetRef.current.delete(sessionId)
+          removeSession(sessionId)
+          return
+        }
         setSessions(prev => prev.map(s => {
           if (s.id !== sessionId) return s
           return { ...s, isStreaming: false, status: `Error: ${err}` }

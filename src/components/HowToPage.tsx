@@ -256,7 +256,7 @@ export default function HowToPage() {
           </p>
 
           <h3 id="interop-tools">Agent tools</h3>
-          <p>When agent interop is enabled for a session, five tools become available:</p>
+          <p>When agent interop is enabled for a session, seven tools become available:</p>
           <ul>
             <li>
               <code>list_agents</code> — returns a list of all other open sessions with their id, name, model (<code>claude code</code> for Claude Code sessions), session type, status, streaming state, and message count. This is the starting point for any inter-agent workflow: the agent uses the name to identify the right target and the id to call the other tools.
@@ -273,23 +273,44 @@ export default function HowToPage() {
             <li>
               <code>delete_agent(agent_id)</code> — closes another session and permanently erases its chat history. Cannot delete self or a currently streaming session. Triggers a confirmation dialog (see below). Cannot be undone.
             </li>
+            <li>
+              <code>delete_notepad</code> — clears the shared notepad entirely. Works the same as calling <code>write_notepad</code> with empty content but is more explicit about intent.
+            </li>
+            <li>
+              <code>delete_self</code> — closes and removes the calling session from the workspace. For chat sessions, the deletion takes effect after the current response finishes. Cannot be undone.
+            </li>
           </ul>
 
           <h3 id="interop-cc-rest">Claude Code AIO (REST endpoints)</h3>
           <p>
-            Chat sessions use AIO via tool calls injected into the system prompt. Claude Code sessions cannot use those tools directly, so Pancake exposes equivalent functionality as REST endpoints on the local server. CC sessions are automatically informed about these endpoints when they start (via <code>--append-system-prompt</code>) and can call them with <code>curl</code>.
+            Chat sessions use AIO via tool calls injected into the system prompt. Claude Code sessions cannot use those tools directly, so Pancake exposes equivalent functionality as REST endpoints on the local server. CC sessions are automatically informed about these endpoints when they start (via <code>--append-system-prompt</code>), including their own session ID, and can call them with <code>curl</code>.
           </p>
+          <p><strong>Agent interop:</strong></p>
           <ul>
             <li><code>GET /aio/list-agents</code> — returns a JSON array of all sessions with their id, name, model, status, and session type.</li>
             <li><code>GET /aio/read-agent?agentId=uuid</code> — reads another session's content. For chat sessions, returns the full message history. For Claude Code sessions, returns the recent terminal output (ANSI codes stripped).</li>
             <li><code>POST /aio/create-agent</code> — creates a new session. Body: <code>{'{"name": "Worker", "sessionType": "claude-code", "cwd": "/path"}'}</code>. Returns the new session's id and name.</li>
             <li><code>POST /aio/send-message</code> — sends a message to another session. Body: <code>{'{"agentId": "uuid", "message": "text"}'}</code>. For Claude Code targets, the message is injected directly into the PTY and submitted automatically. For Chat targets, it triggers a normal message send.</li>
           </ul>
+          <p><strong>Shared notepad:</strong></p>
+          <ul>
+            <li><code>GET /aio/read-notepad</code> — returns the current notepad contents as <code>{'{"content": "..."}'}</code>.</li>
+            <li><code>POST /aio/write-notepad</code> — overwrites the notepad. Body: <code>{'{"content": "new content"}'}</code>.</li>
+            <li><code>POST /aio/delete-notepad</code> — clears the notepad entirely. No body required.</li>
+          </ul>
+          <p><strong>Session management:</strong></p>
+          <ul>
+            <li><code>POST /aio/delete-self</code> — closes and removes this session from the workspace. Body: <code>{'{"sessionId": "<your-session-id>"}'}</code>. The session ID is provided in the injected system prompt at startup.</li>
+          </ul>
           <p>
             Example from inside a Claude Code session:
           </p>
           <pre style={{ fontSize: '0.8rem', background: 'var(--cream-dark, #f5ede4)', padding: '8px 12px', borderRadius: '5px', overflowX: 'auto' }}>
             {`curl -s http://127.0.0.1:4174/aio/list-agents | jq
+curl -s http://127.0.0.1:4174/aio/read-notepad | jq
+curl -s -X POST http://127.0.0.1:4174/aio/write-notepad \\
+  -H 'Content-Type: application/json' \\
+  -d '{"content":"notes from CC session"}'
 curl -s -X POST http://127.0.0.1:4174/aio/create-agent \\
   -H 'Content-Type: application/json' \\
   -d '{"name":"Helper","sessionType":"claude-code"}'`}
@@ -326,6 +347,9 @@ curl -s -X POST http://127.0.0.1:4174/aio/create-agent \\
             <li>Click <strong>Delete</strong> to proceed — the session is closed immediately.</li>
             <li>Check <strong>Don't ask me again this session</strong> to suppress the dialog for all subsequent <code>delete_agent</code> calls during the current page session. This resets on page reload.</li>
           </ul>
+          <p>
+            <code>delete_self</code> does <strong>not</strong> trigger a confirmation dialog — it closes the calling session immediately (chat sessions close after the current response finishes; Claude Code sessions close as soon as the REST call completes).
+          </p>
         </section>
 
         <section id="session-groups">
@@ -372,9 +396,11 @@ curl -s -X POST http://127.0.0.1:4174/aio/create-agent \\
             <li>When <strong>STO</strong> (session persistence) is enabled, Notepad content persists across page refreshes. When STO is off, content lives in memory only.</li>
           </ul>
           <h3>Agent Notepad tools</h3>
+          <p>Chat sessions access the Notepad via tool calls. Claude Code sessions access it via REST endpoints on the Pancake server (see <a href="#interop-cc-rest">Claude Code AIO</a>). All sessions share the same notepad.</p>
           <ul>
             <li><code>read_notepad</code> — reads the current Notepad contents</li>
             <li><code>write_notepad</code> — overwrites the Notepad with new content</li>
+            <li><code>delete_notepad</code> — clears the Notepad entirely</li>
           </ul>
           <p>
             Multiple agents can collaborate through the Notepad — one writes a plan, another reads and continues. Tell an agent naturally: "Write a summary to the notepad" or "Read the notepad and continue from where we left off."

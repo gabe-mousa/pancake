@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync } from 'fs'
+import { existsSync, statSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { spawnSync, spawn } from 'child_process'
@@ -8,8 +8,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
 const dist = resolve(root, 'dist')
 
-// Build if dist doesn't exist
-if (!existsSync(dist)) {
+// Rebuild if dist doesn't exist, or if App.tsx is newer than the dist bundle
+// (catches the case where source has changed but npm start hasn't rebuilt)
+function needsBuild() {
+  if (!existsSync(dist)) return true
+  const distIndex = resolve(dist, 'index.html')
+  const srcApp = resolve(root, 'src', 'App.tsx')
+  if (!existsSync(distIndex)) return true
+  if (!existsSync(srcApp)) return false
+  return statSync(srcApp).mtimeMs > statSync(distIndex).mtimeMs
+}
+
+if (needsBuild()) {
   console.log('Building Pancake...')
   const result = spawnSync('npm', ['run', 'build'], { cwd: root, stdio: 'inherit', shell: true })
   if (result.status !== 0) {

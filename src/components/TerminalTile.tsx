@@ -9,6 +9,7 @@ interface Props {
   cwd?: string
   expanded: boolean
   isActive: boolean
+  isSelected: boolean
   hotkeys: Hotkeys
   pageVisible: boolean
   onCwdChange?: (cwd: string) => void
@@ -31,12 +32,13 @@ function matchesHotkey(e: KeyboardEvent, combo: string): boolean {
   )
 }
 
-export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotkeys, pageVisible, onCwdChange, isDragging, activeInputValue, mirroredInputValue, onActiveInputChange, onSendMessage }: Props) {
+export default function TerminalTile({ sessionId, cwd, expanded, isActive, isSelected, hotkeys, pageVisible, onCwdChange, isDragging, activeInputValue, mirroredInputValue, onActiveInputChange, onSendMessage }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const isDraggingRef = useRef(false)
+  const broadcastInputRef = useRef<HTMLInputElement | null>(null)
   isDraggingRef.current = !!isDragging
 
   useEffect(() => {
@@ -207,9 +209,23 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
     prevDragging.current = !!isDragging
   }, [isDragging])
 
-  const isBroadcastActive = activeInputValue !== null
+  // Broadcast bar: show only when sessions are selected.
+  // Active tile (isSelected && activeInputValue !== null): editable, broadcasts on Enter.
+  // Mirrored tile (selected but not active): read-only display of what will be sent.
+  const isBroadcastActive = isSelected && activeInputValue !== null
   const isBroadcastMirrored = !isBroadcastActive && mirroredInputValue !== null
   const showBroadcastBar = isBroadcastActive || isBroadcastMirrored
+
+  // When this CC tile enters broadcast mode (isSelected becomes true while active),
+  // focus the broadcast bar so "just typing" sends to all selected sessions.
+  // When deselected, restore focus to the terminal.
+  useEffect(() => {
+    if (isBroadcastActive) {
+      broadcastInputRef.current?.focus()
+    } else if (isActive) {
+      termRef.current?.focus()
+    }
+  }, [isBroadcastActive, isActive])
 
   function handleBroadcastKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -223,6 +239,7 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
       {showBroadcastBar && (
         <div className={`terminal-broadcast-bar${isBroadcastMirrored ? ' terminal-broadcast-bar-mirrored' : ''}`}>
           <input
+            ref={broadcastInputRef}
             className="terminal-broadcast-input"
             placeholder="Broadcast to selected sessions..."
             value={isBroadcastActive ? (activeInputValue ?? '') : (mirroredInputValue ?? '')}

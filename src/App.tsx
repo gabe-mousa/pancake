@@ -248,13 +248,94 @@ export default function App() {
   }, [])
 
   // --- AIO Control WebSocket ---
+  // Handler stored in a ref so it's always current — if Vite HMR re-renders the component
+  // without remounting it, the useEffect (empty deps) won't re-run, but the ref is re-assigned
+  // on every render. The stable ws.onmessage closure calls through this ref, so new operations
+  // added after HMR are picked up immediately without a full page reload.
+  type AioMsg = { type: string; requestId: string; operation: string; params: Record<string, unknown> }
+  const handleAioRef = useRef<((msg: AioMsg, respond: (r: unknown) => void) => void) | null>(null)
+  handleAioRef.current = (msg, respond) => {
+    if (msg.operation === 'list_agents') {
+      const list = sessionsRef.current.map(s => ({
+        id: s.id,
+        name: s.name,
+        model: s.model,
+        status: s.status,
+        sessionType: s.sessionType,
+        isStreaming: s.isStreaming,
+        messageCount: s.messages.length,
+      }))
+      respond(list)
+    } else if (msg.operation === 'create_agent') {
+      const { name, sessionType, cwd } = msg.params as { name?: string; sessionType?: SessionType; cwd?: string }
+      const st = sessionType ?? 'chat'
+      const displayNumber = sessionsRef.current.length + 1
+      const effectiveModel = st === 'claude-code' ? 'claude code' : configRef.current.defaultModel
+      const session = createSession(
+        effectiveModel,
+        name ?? '',
+        displayNumber,
+        defaultFsAccess,
+        pancakeEnabled,
+        localEnabled,
+        st,
+        cwd,
+      )
+      setSessions(prev => [...prev, session])
+      respond({ id: session.id, name: session.name, model: session.model, sessionType: st })
+    } else if (msg.operation === 'read_agent') {
+      const { agentId } = msg.params as { agentId: string }
+      const target = sessionsRef.current.find(s => s.id === agentId)
+      if (!target) {
+        respond({ error: `No session with id "${agentId}"` })
+      } else if (target.sessionType === 'claude-code') {
+        respond({ note: 'Claude Code terminal buffer is returned by the server directly.' })
+      } else {
+        respond({ sessionType: 'chat', messages: target.messages })
+      }
+    } else if (msg.operation === 'send_message') {
+      const { agentId, message } = msg.params as { agentId: string; message: string }
+      const target = sessionsRef.current.find(s => s.id === agentId)
+      if (!target) {
+        respond({ error: `No session with id "${agentId}"` })
+      } else if (target.sessionType === 'claude-code') {
+        respond({ error: 'Claude Code targets are handled server-side via PTY injection' })
+      } else {
+        if (doSendRef.current) {
+          doSendRef.current(agentId, message as string, 'AIO endpoint')
+        }
+        respond({ queued: true, agentId, agentName: target.name })
+      }
+    } else if (msg.operation === 'read_notepad') {
+      respond({ content: notepadRef.current || '' })
+    } else if (msg.operation === 'write_notepad') {
+      const { content } = msg.params as { content: string }
+      setNotepadContent(content ?? '')
+      respond({ ok: true })
+    } else if (msg.operation === 'delete_notepad') {
+      setNotepadContent('')
+      respond({ ok: true })
+    } else if (msg.operation === 'delete_self') {
+      const { sessionId: targetId } = msg.params as { sessionId: string }
+      const target = sessionsRef.current.find(s => s.id === targetId)
+      if (!target) {
+        respond({ error: `No session with id "${targetId}"` })
+      } else {
+        removeSession(targetId)
+        respond({ ok: true })
+      }
+    } else {
+      respond({ error: `Unknown operation: ${msg.operation}` })
+    }
+  }
+
   useEffect(() => {
     function connect() {
       const ws = new WebSocket('ws://127.0.0.1:4174/ws/control')
       controlWsRef.current = ws
 
       ws.onmessage = (event) => {
-        let msg: { type: string; requestId: string; operation: string; params: Record<string, unknown> }
+        let msg: AioMsg
         try { msg = JSON.parse(event.data) } catch { return }
         if (msg.type !== 'aio_request' || !msg.requestId) return
 
@@ -264,89 +345,16 @@ export default function App() {
           }
         }
 
-        if (msg.operation === 'list_agents') {
-          const list = sessionsRef.current.map(s => ({
-            id: s.id,
-            name: s.name,
-            model: s.model,
-            status: s.status,
-            sessionType: s.sessionType,
-            isStreaming: s.isStreaming,
-            messageCount: s.messages.length,
-          }))
-          respond(list)
-        } else if (msg.operation === 'create_agent') {
-          const { name, sessionType, cwd } = msg.params as { name?: string; sessionType?: SessionType; cwd?: string }
-          const st = sessionType ?? 'chat'
-          const displayNumber = sessionsRef.current.length + 1
-          const effectiveModel = st === 'claude-code' ? 'claude code' : configRef.current.defaultModel
-          const session = createSession(
-            effectiveModel,
-            name ?? '',
-            displayNumber,
-            defaultFsAccess,
-            pancakeEnabled,
-            localEnabled,
-            st,
-            cwd,
-          )
-          setSessions(prev => [...prev, session])
-          respond({ id: session.id, name: session.name, model: session.model, sessionType: st })
-        } else if (msg.operation === 'read_agent') {
-          const { agentId } = msg.params as { agentId: string }
-          const target = sessionsRef.current.find(s => s.id === agentId)
-          if (!target) {
-            respond({ error: `No session with id "${agentId}"` })
-          } else if (target.sessionType === 'claude-code') {
-            respond({ note: 'Claude Code terminal buffer is returned by the server directly.' })
-          } else {
-            respond({ sessionType: 'chat', messages: target.messages })
-          }
-        } else if (msg.operation === 'send_message') {
-          const { agentId, message } = msg.params as { agentId: string; message: string }
-          const target = sessionsRef.current.find(s => s.id === agentId)
-          if (!target) {
-            respond({ error: `No session with id "${agentId}"` })
-          } else if (target.sessionType === 'claude-code') {
-            // CC targets are handled server-side; shouldn't arrive here, but handle gracefully
-            respond({ error: 'Claude Code targets are handled server-side via PTY injection' })
-          } else {
-            if (doSendRef.current) {
-              doSendRef.current(agentId, message as string, 'AIO endpoint')
-            }
-            respond({ queued: true, agentId, agentName: target.name })
-          }
-        } else if (msg.operation === 'read_notepad') {
-          respond({ content: notepadRef.current || '' })
-        } else if (msg.operation === 'write_notepad') {
-          const { content } = msg.params as { content: string }
-          setNotepadContent(content ?? '')
-          respond({ ok: true })
-        } else if (msg.operation === 'delete_notepad') {
-          setNotepadContent('')
-          respond({ ok: true })
-        } else if (msg.operation === 'delete_self') {
-          const { sessionId: targetId } = msg.params as { sessionId: string }
-          const target = sessionsRef.current.find(s => s.id === targetId)
-          if (!target) {
-            respond({ error: `No session with id "${targetId}"` })
-          } else {
-            removeSession(targetId)
-            respond({ ok: true })
-          }
-        } else {
-          respond({ error: `Unknown operation: ${msg.operation}` })
-        }
+        handleAioRef.current?.(msg, respond)
       }
 
       ws.onclose = () => {
         controlWsRef.current = null
-        // Reconnect after a delay
         setTimeout(connect, 3000)
       }
 
       ws.onerror = () => {
-        // onclose will fire after this, triggering reconnect
+        // onclose fires after this, triggering reconnect
       }
     }
 

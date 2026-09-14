@@ -2,10 +2,11 @@ import { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import type { Hotkeys } from '../types'
+import type { Hotkeys, TerminalSessionType } from '../types'
 
 interface Props {
   sessionId: string
+  sessionType: TerminalSessionType
   cwd?: string
   expanded: boolean
   isActive: boolean
@@ -27,7 +28,7 @@ function matchesHotkey(e: KeyboardEvent, combo: string): boolean {
   )
 }
 
-export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotkeys, pageVisible, onCwdChange, isDragging }: Props) {
+export default function TerminalTile({ sessionId, sessionType, cwd, expanded, isActive, hotkeys, pageVisible, onCwdChange, isDragging }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -104,7 +105,7 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
           }
           if (msg.type === 'reconnect_failed') {
             // No existing PTY — create a new one
-            ws.send(JSON.stringify({ type: 'create', sessionId, cwd }))
+            ws.send(JSON.stringify({ type: 'create', sessionId, sessionType, cwd }))
             connected = true
             // Same size-sync needed for newly created sessions
             syncSize()
@@ -189,7 +190,7 @@ export default function TerminalTile({ sessionId, cwd, expanded, isActive, hotke
       ws.close()
       term.dispose()
     }
-  }, [sessionId])
+  }, [sessionId, sessionType])
 
   useEffect(() => {
     // Use rAF so the browser finishes layout at the new tile size before we

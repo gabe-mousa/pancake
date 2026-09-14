@@ -1,6 +1,6 @@
 # Pancake
 
-Run multiple Claude AI agent sessions side by side in your browser.
+Run multiple AI agent sessions side by side in your browser.
 
 ## Quick start
 
@@ -16,18 +16,18 @@ Pancake builds itself on first run, starts the backend server, and opens `http:/
 ## Features
 
 - **Multi-session grid** — run up to 4 sessions per row, each with its own model and conversation history
-- **Claude Code sessions** — spawn full xterm.js terminal tiles running a local Claude Code CLI process alongside chat sessions
+- **Coding-agent terminals** — run local Claude Code and Codex CLI sessions in full xterm.js terminal tiles alongside chat sessions
 - **Session persistence** — save and restore sessions across page refreshes with the **STO** toggle
 - **Layout modes** — switch between wide (4 columns) and tall (2 columns, larger tiles) from the nav bar
 - **Broadcasting** — select multiple tiles and send one message to all of them simultaneously
 - **Shared notepad** — a floating, resizable markdown scratchpad readable and writable by any agent or by you
-- **Agent interoperability** — agents can list, message, create, and delete other sessions autonomously via tool calls. Claude Code sessions can also use AIO via REST endpoints (`curl`)
+- **Agent interoperability** — agents can list, message, create, and delete other sessions autonomously via tool calls. Claude Code and Codex sessions can also use AIO via REST endpoints (`curl`)
 - **Pancake's Filesystem (PFS)** — an in-browser virtual filesystem; upload files and folders for agents to read and write
 - **Local Filesystem (LFS)** — a bridge to a real directory on your machine, served by a local Express server Pancake starts automatically
 - **Drag and drop** — reorder session tiles by dragging
 - **Configurable hotkeys** — all keyboard shortcuts are remappable in the settings menu
 - **Session indicators** — unread messages show an orange pulsing dot; PFS (green) and LFS (blue) dots indicate filesystem access per session
-- **Terminal reconnection** — Claude Code PTY processes survive WebSocket disconnections and automatically reattach with buffered output replay
+- **Terminal reconnection** — coding-agent PTY processes survive WebSocket disconnections and automatically reattach with buffered output replay
 - **In-app documentation** — comprehensive Docs and About pages accessible from the nav bar
 - **Toolbar help** — click the **?** button in the header to see a quick reference of what each toolbar button does
 - **Flexible auth** — connect via Anthropic API key or a Cybertron devbox gateway
@@ -35,7 +35,8 @@ Pancake builds itself on first run, starts the backend server, and opens `http:/
 ## Requirements
 
 - Node.js 18+
-- An [Anthropic API key](https://console.anthropic.com/) — or a Cybertron devbox shell for gateway access
+- An [Anthropic API key](https://console.anthropic.com/) or a Cybertron devbox shell for Chat sessions
+- The locally installed and authenticated `claude` and/or `codex` CLI for the corresponding terminal session type
 
 ## Usage
 
@@ -44,8 +45,8 @@ Pancake builds itself on first run, starts the backend server, and opens `http:/
 1. Clone the repo, install dependencies with `npm install`, and start (`npm start` — see [Quick start](#quick-start) above)
 2. Click **⚙** (top right) and enter your Anthropic API key (or set auth mode to Cybertron if using a devbox shell)
 3. Press **Ctrl+Shift+N** (or click **+**) to create a session
-4. Choose a session type (**Chat** or **Claude Code**) — press **Ctrl+Shift+N** again to toggle the type — then enter a name and optionally a model or working directory, and press **Enter** or click **Create**
-5. Type in the chat input and press **Enter** to send (Chat), or type directly in the terminal (Claude Code)
+4. Choose a session type (**Chat**, **Claude Code**, or **Codex**) — press **Ctrl+Shift+N** again to cycle types — then enter a name and optionally a model or working directory, and press **Enter** or click **Create**
+5. Type in the chat input and press **Enter** to send (Chat), or type directly in the terminal (Claude Code or Codex)
 
 ### Layout modes
 
@@ -58,7 +59,7 @@ Use the layout toggle in the nav bar to switch between two grid modes:
 
 | Action | Default shortcut |
 |---|---|
-| New session | `Ctrl+Shift+N` (press again to toggle Chat / Claude Code) |
+| New session | `Ctrl+Shift+N` (press again to cycle Chat / Claude Code / Codex) |
 | Navigate tiles | `Alt+Arrow keys` |
 | Select tiles (for broadcast) | `Shift+Arrow keys` |
 | Deselect all | `Shift+F` |
@@ -101,7 +102,7 @@ When enabled (the **AIO** button, lavender when on), agents can use five tools t
 
 Interop is enabled by default and can be toggled globally from the header or per-session from each tile's AIO badge.
 
-Claude Code sessions also have access to AIO via REST endpoints on the Pancake server. CC sessions are automatically informed about these endpoints when they start and can call them with `curl`:
+Claude Code and Codex sessions also have access to AIO via REST endpoints on the Pancake server. Both are automatically informed about these endpoints when they start and can call them with `curl`:
 
 - `GET /aio/list-agents` — list all sessions
 - `POST /aio/create-agent` — create a new session
@@ -121,7 +122,7 @@ npm run dev
 
 This starts the Vite dev server at `http://localhost:5173` and the backend server at port 4174.
 
-**Note:** `node-pty` (used for Claude Code terminal sessions) includes native bindings that must be compiled for your machine. If `npm install` doesn't build them automatically, run:
+**Note:** `node-pty` (used for terminal agent sessions) includes native bindings that must be compiled for your machine. If `npm install` doesn't build them automatically, run:
 
 ```bash
 cd node_modules/node-pty && npx node-gyp rebuild
@@ -135,6 +136,7 @@ cd node_modules/node-pty && npx node-gyp rebuild
 | `FS_PORT` | Override the filesystem/backend server port (default `4174`) |
 | `FS_ROOT` | Set the LFS root directory at startup |
 | `CLAUDE_PATH` | Override the path to the Claude Code CLI binary. Defaults to `claude` (resolved from `PATH`) |
+| `CODEX_PATH` | Override the path to the Codex CLI binary. Defaults to `codex` (resolved from `PATH`) |
 
 ### Scripts
 

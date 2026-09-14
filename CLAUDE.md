@@ -1,8 +1,8 @@
-# Pancake — Claude Code Project Guide
+# Pancake — Coding Agent Project Guide
 
 ## What is Pancake?
 
-A browser-based multi-session Claude AI workbench. Run multiple chat and Claude Code terminal sessions side by side in a tile grid, with agent interoperability, shared notepad, and virtual/local filesystems.
+A browser-based multi-session AI workbench. Run multiple chat, Claude Code, and Codex terminal sessions side by side in a tile grid, with agent interoperability, shared notepad, and virtual/local filesystems.
 
 ## Architecture
 
@@ -11,10 +11,10 @@ pancake/
 ├── bin/pancake.js           # CLI entry point (npm start)
 ├── server/index.js          # Express + WebSocket backend (port 4174)
 │                              - Local filesystem bridge (LFS)
-│                              - PTY management for Claude Code sessions
+│                              - PTY management for Claude Code and Codex sessions
 │                              - WebSocket server for terminal I/O (path: /ws/terminal)
 │                              - Control WebSocket for AIO relay (path: /ws/control)
-│                              - AIO REST endpoints (/aio/*) for Claude Code sessions
+│                              - AIO REST endpoints (/aio/*) for terminal agent sessions
 ├── src/
 │   ├── App.tsx              # Main app: state, routing, agent interop, layout
 │   ├── anthropic.ts         # Anthropic API streaming client
@@ -24,8 +24,8 @@ pancake/
 │   │   ├── TileGrid.tsx     # Sortable grid of session tiles (dnd-kit)
 │   │   ├── Tile.tsx         # Single tile wrapper — renders ChatWindow or TerminalTile
 │   │   ├── ChatWindow.tsx   # Chat UI for API-based sessions
-│   │   ├── TerminalTile.tsx # xterm.js terminal for Claude Code sessions
-│   │   ├── NewSessionModal.tsx  # Session creation (chat or claude-code)
+│   │   ├── TerminalTile.tsx # xterm.js terminal for coding-agent sessions
+│   │   ├── NewSessionModal.tsx  # Session creation (chat, claude-code, or codex)
 │   │   ├── ConfigModal.tsx  # Settings: API key, auth mode, hotkeys
 │   │   ├── NotepadWindow.tsx    # Floating resizable notepad
 │   │   ├── NotepadPage.tsx  # Full-page notepad editor
@@ -43,20 +43,23 @@ pancake/
 ### Session types (`SessionType` in types.ts)
 - **`chat`** — API-based conversation via `anthropic.ts` streaming client
 - **`claude-code`** — Full PTY terminal running the `claude` CLI binary via `node-pty`, rendered with xterm.js, connected over WebSocket
+- **`codex`** — Full PTY terminal running the `codex` CLI binary through the same transport and inherited local authentication
 
 ### Layout modes (`Layout` in App.tsx)
 - **`wide`** — 4 tiles per row (default)
 - **`tall`** — 2 tiles per row with larger tile height
 - Toggled from the header bar; CSS class `tile-grid--tall` on the grid
 
-### Data flow for Claude Code sessions
+### Data flow for terminal agent sessions
 ```
-TerminalTile.tsx → WebSocket (ws://127.0.0.1:4174/ws/terminal) → server/index.js → pty.spawn(claude)
+TerminalTile.tsx → WebSocket (ws://127.0.0.1:4174/ws/terminal) → server/index.js → pty.spawn(claude | codex)
 ```
 - Binary path: `process.env.CLAUDE_PATH || 'claude'` (resolved from PATH)
+- Codex binary path: `process.env.CODEX_PATH || 'codex'` (resolved from PATH)
 - PTY processes stored in `ptyMap` keyed by sessionId
 - Input injection also available via `POST /terminal/input` (used by agent interop)
-- CC sessions are spawned with `--append-system-prompt` to inject AIO endpoint docs
+- Claude Code uses `--append-system-prompt`; Codex uses the `developer_instructions` config override to inject AIO endpoint docs without starting a task
+- Both CLIs inherit the Pancake process environment and their existing local CLI authentication
 
 ### WebSocket routing
 Path-based routing via HTTP `upgrade` event:
@@ -66,7 +69,7 @@ Path-based routing via HTTP `upgrade` event:
 ### Agent interoperability (AIO)
 **Chat sessions:** Tools (`list_agents`, `read_agent_chat`, `send_message_to_agent`, `create_agent`, `delete_agent`) are injected as system prompt tool definitions in `App.tsx`.
 
-**Claude Code sessions:** AIO is exposed as REST endpoints on the server (`/aio/list-agents`, `/aio/create-agent`, `/aio/send-message`). CC sessions learn about these via `--append-system-prompt` and call them with `curl`. The server relays requests to the frontend via a control WebSocket for operations that require frontend state (session creation, listing).
+**Terminal agent sessions:** AIO is exposed as REST endpoints on the server (`/aio/list-agents`, `/aio/create-agent`, `/aio/send-message`). Claude Code and Codex receive endpoint instructions at launch and call them with `curl`. The server relays requests to the frontend via a control WebSocket for operations that require frontend state (session creation, listing).
 
 ### Filesystems
 - **PFS** — In-memory virtual filesystem (browser only), stored in React state
@@ -81,7 +84,7 @@ npm run dev          # Starts Vite (5173) + backend server (4174)
 
 ### Important: node-pty native bindings
 
-`node-pty` requires native compilation. If Claude Code sessions fail with `posix_spawnp failed`, rebuild:
+`node-pty` requires native compilation. If terminal agent sessions fail with `posix_spawnp failed`, rebuild:
 
 ```bash
 cd node_modules/node-pty && npx node-gyp rebuild

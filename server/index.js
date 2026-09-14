@@ -8,6 +8,7 @@ import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import { WebSocketServer } from 'ws'
 import pty from 'node-pty'
+import { getTerminalAgentConfig } from './terminal-agent.js'
 
 // Parse CLI args: --root <path> --port <number>
 const args = process.argv.slice(2)
@@ -251,12 +252,13 @@ app.get('/fs/exists', (req, res) => {
   }
 })
 
-// PTY management for Claude Code sessions
+// PTY management for terminal agent sessions
 const ptyMap = new Map()        // sessionId → ptyProcess
 const ptyBuffers = new Map()    // sessionId → circular buffer of recent output (for reconnect replay)
+const ptySessionTypes = new Map() // sessionId → claude-code | codex
 const PTY_BUFFER_SIZE = 50000   // max chars to buffer per PTY
 
-// Get the current working directory of a Claude Code PTY session
+// Get the current working directory of a terminal agent PTY session
 app.get('/terminal/cwd', async (req, res) => {
   const sessionId = req.query.sessionId
   if (!sessionId) return res.status(400).json({ error: 'sessionId query param required' })
@@ -285,7 +287,7 @@ app.get('/terminal/cwd', async (req, res) => {
   }
 })
 
-// Inject input into a Claude Code PTY session (used by agent interop)
+// Inject input into a terminal agent PTY session (used by agent interop)
 app.post('/terminal/input', (req, res) => {
   const { sessionId, data } = req.body
   if (!sessionId || data === undefined) return res.status(400).json({ error: 'sessionId and data are required' })
@@ -322,7 +324,7 @@ function typeIntoPty(p, message) {
   })
 }
 
-// Inject input into a Claude Code session by writing directly to the PTY.
+// Inject input into a terminal agent session by writing directly to the PTY.
 // Types each character with small delays, sends Escape to dismiss autocomplete,
 // then sends \r to submit.
 app.post('/terminal/type', async (req, res) => {
@@ -339,13 +341,15 @@ app.post('/terminal/type', async (req, res) => {
   }
 })
 
-// AIO system prompt injected into Claude Code sessions
+// AIO instructions injected into terminal agent sessions
 const aioSystemPrompt = `You are running inside Pancake, a multi-session AI workbench. You can interact with other sessions using these HTTP endpoints on localhost:4174:
 
 - GET /aio/list-agents — List all sessions in the workspace
-- GET /aio/read-agent?agentId=<uuid> — Read another session's content. Returns chat messages for chat sessions, or recent terminal output for Claude Code sessions.
-- POST /aio/create-agent — Create a new session. Body: { "name": "string", "sessionType": "chat" | "claude-code", "cwd": "/optional/path" }
+- GET /aio/read-agent?agentId=<uuid> — Read another session's content. Returns chat messages for chat sessions, or recent terminal output for terminal sessions.
+- POST /aio/create-agent — Create a new session. Body: { "name": "string", "sessionType": "chat" | "claude-code" | "codex", "cwd": "/optional/path" }
 - POST /aio/send-message — Send a message to another session. Body: { "agentId": "uuid", "message": "text" }
+- GET /aio/notepad — Read the shared notepad
+- POST /aio/notepad — Replace the shared notepad. Body: { "content": "text" }
 
 Use curl to call these endpoints. Example: curl -s http://127.0.0.1:4174/aio/list-agents | jq`
 
@@ -391,12 +395,12 @@ app.get('/aio/read-agent', (req, res) => {
   const agentId = req.query.agentId
   if (!agentId) return res.status(400).json({ error: 'agentId query param required' })
 
-  // For CC targets with a PTY buffer, return the recent terminal output
+  // For terminal targets with a PTY buffer, return the recent terminal output
   const buffer = ptyBuffers.get(agentId)
   if (buffer !== undefined) {
     // Strip ANSI escape sequences for readability
     const clean = buffer.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '')
-    return res.json({ sessionType: 'claude-code', content: clean })
+    return res.json({ sessionType: ptySessionTypes.get(agentId) || 'claude-code', content: clean })
   }
 
   // For chat targets, proxy to frontend via control WS
@@ -415,7 +419,7 @@ app.post('/aio/send-message', async (req, res) => {
   const { agentId, message } = req.body || {}
   if (!agentId || !message) return res.status(400).json({ error: 'agentId and message are required' })
 
-  // For CC targets with an active PTY, type directly into the PTY
+  // For terminal targets with an active PTY, type directly into the PTY
   const p = ptyMap.get(agentId)
   if (p) {
     try {
@@ -429,6 +433,32 @@ app.post('/aio/send-message', async (req, res) => {
   // For chat targets, forward to frontend
   const requestId = crypto.randomUUID()
   if (!sendToControl(requestId, 'send_message', { agentId, message })) {
+    return res.status(503).json({ error: 'No frontend connected' })
+  }
+  const timer = setTimeout(() => {
+    pendingAioRequests.delete(requestId)
+    res.status(504).json({ error: 'Timeout waiting for frontend response' })
+  }, 10000)
+  pendingAioRequests.set(requestId, { res, timer })
+})
+
+app.get('/aio/notepad', (req, res) => {
+  const requestId = crypto.randomUUID()
+  if (!sendToControl(requestId, 'get_notepad', {})) {
+    return res.status(503).json({ error: 'No frontend connected' })
+  }
+  const timer = setTimeout(() => {
+    pendingAioRequests.delete(requestId)
+    res.status(504).json({ error: 'Timeout waiting for frontend response' })
+  }, 10000)
+  pendingAioRequests.set(requestId, { res, timer })
+})
+
+app.post('/aio/notepad', (req, res) => {
+  const { content } = req.body || {}
+  if (typeof content !== 'string') return res.status(400).json({ error: 'content string required' })
+  const requestId = crypto.randomUUID()
+  if (!sendToControl(requestId, 'set_notepad', { content })) {
     return res.status(503).json({ error: 'No frontend connected' })
   }
   const timer = setTimeout(() => {
@@ -531,14 +561,19 @@ terminalWss.on('connection', (ws) => {
       }
     } else if (msg.type === 'create') {
       sessionId = msg.sessionId
-      const claudePath = process.env.CLAUDE_PATH || 'claude'
       const cwd = msg.cwd ? path.resolve(msg.cwd.replace(/^~/, process.env.HOME || '')) : process.cwd()
 
-      const ccArgs = ['--append-system-prompt', aioSystemPrompt]
+      let terminalAgent
+      try {
+        terminalAgent = getTerminalAgentConfig(msg.sessionType || 'claude-code', aioSystemPrompt)
+      } catch (e) {
+        ws.send(`\r\n\x1b[31m[Pancake] ${e.message}\x1b[0m\r\n`)
+        return
+      }
 
       let ptyProcess
       try {
-        ptyProcess = pty.spawn(claudePath, ccArgs, {
+        ptyProcess = pty.spawn(terminalAgent.binary, terminalAgent.args, {
           name: 'xterm-color',
           cols: 80,
           rows: 24,
@@ -546,17 +581,19 @@ terminalWss.on('connection', (ws) => {
           env: process.env,
         })
       } catch (e) {
-        ws.send(`\r\n\x1b[31m[Pancake] Failed to start Claude Code: ${e.message}\x1b[0m\r\n`)
+        ws.send(`\r\n\x1b[31m[Pancake] Failed to start ${terminalAgent.displayName}: ${e.message}\x1b[0m\r\n`)
         return
       }
 
       ptyMap.set(sessionId, ptyProcess)
       ptyBuffers.set(sessionId, '')
+      ptySessionTypes.set(sessionId, msg.sessionType || 'claude-code')
       attachWsToPty(ws, sessionId, ptyProcess)
 
       ptyProcess.onExit(() => {
         ptyMap.delete(sessionId)
         ptyBuffers.delete(sessionId)
+        ptySessionTypes.delete(sessionId)
         ptyWsMap.delete(sessionId)
         if (ws.readyState === ws.OPEN) ws.close()
       })

@@ -17,7 +17,12 @@ export interface AgentMeta {
 
 export type FsAccess = 'none' | 'read' | 'read-write' | 'read-write-delete'
 
-export type SessionType = 'chat' | 'claude-code'
+export type SessionType = 'chat' | 'claude-code' | 'codex'
+export type TerminalSessionType = Exclude<SessionType, 'chat'>
+
+export function isTerminalSessionType(sessionType: SessionType): sessionType is TerminalSessionType {
+  return sessionType === 'claude-code' || sessionType === 'codex'
+}
 
 export interface Session {
   id: string

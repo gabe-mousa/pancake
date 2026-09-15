@@ -135,14 +135,14 @@ const AGENT_INTEROP_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'create_agent',
-    description: 'Create a new agent session in the Pancake workspace. Use session_type "claude-code" to open a real Claude Code terminal session instead of a chat session.',
+    description: 'Create a new agent session in the Pancake workspace. Use session_type "claude-code" or "codex" to open a terminal agent session instead of a chat session.',
     input_schema: {
       type: 'object',
       properties: {
         name: { type: 'string', description: 'Name for the new session. Defaults to "Session N".' },
-        model: { type: 'string', description: 'Model to use for chat sessions. Ignored for claude-code sessions.' },
-        session_type: { type: 'string', enum: ['chat', 'claude-code'], description: 'Session type. "chat" (default) creates a normal chat session. "claude-code" opens a PTY terminal running the Claude Code CLI.' },
-        cwd: { type: 'string', description: 'Working directory for claude-code sessions (e.g. "~/Projects/my-app"). Defaults to the server\'s current directory.' },
+        model: { type: 'string', description: 'Model to use for chat sessions. Ignored for terminal agent sessions.' },
+        session_type: { type: 'string', enum: ['chat', 'claude-code', 'codex'], description: 'Session type. "chat" (default) creates a normal chat session; the other values open a PTY running the selected local coding-agent CLI.' },
+        cwd: { type: 'string', description: 'Working directory for terminal agent sessions (e.g. "~/Projects/my-app"). Defaults to the server\'s current directory.' },
       },
       required: [],
     },
@@ -287,14 +287,14 @@ function buildSystemPrompt(ctx: StreamContext): string | undefined {
     parts.push(
       `## Agent Interoperability\n` +
       `You can interact with other agent sessions running in this Pancake workspace.\n\n` +
-      `- list_agents — see all available agents and their status (model: "claude code" identifies Claude Code terminal sessions)\n` +
-      `- read_agent_chat — read another agent's conversation history (Claude Code sessions have no message history; use send_message_to_agent to communicate with them)\n` +
-      `- send_message_to_agent — send a message to another agent. For chat agents: triggers a reply (set await_response: true to wait). For Claude Code sessions: injects the text directly into the terminal as keyboard input.\n` +
-      `- create_agent — spawn a new session. Use session_type: "claude-code" to open a Claude Code terminal (optionally pass cwd for its working directory). Use session_type: "chat" or omit for a normal chat agent.\n` +
-      `- delete_agent — close and remove an agent session (works for both chat and Claude Code sessions)\n\n` +
+      `- list_agents — see all available agents and their status (model identifies Claude Code and Codex terminal sessions)\n` +
+      `- read_agent_chat — read another agent's conversation history (terminal sessions expose recent terminal output instead of structured messages)\n` +
+      `- send_message_to_agent — send a message to another agent. For chat agents: triggers a reply (set await_response: true to wait). For terminal agents: injects the text directly into the terminal as keyboard input.\n` +
+      `- create_agent — spawn a new session. Use session_type: "claude-code" or "codex" to open that terminal agent (optionally pass cwd). Use session_type: "chat" or omit for a normal chat agent.\n` +
+      `- delete_agent — close and remove an agent session (works for chat and terminal sessions)\n\n` +
       `Important constraints:\n` +
       `- You cannot message or delete yourself.\n` +
-      `- You cannot message a chat agent that is currently streaming (isStreaming: true). Use list_agents to check status first, then retry. Claude Code sessions can always receive input.\n` +
+      `- You cannot message a chat agent that is currently streaming (isStreaming: true). Use list_agents to check status first, then retry. Terminal sessions can always receive input.\n` +
       `- delete_agent may trigger a user confirmation prompt; if the user cancels, the tool will return an error.`
     )
   }
@@ -385,10 +385,12 @@ async function executeTool(block: Anthropic.ToolUseBlock, ctx: StreamContext): P
   }
   if (ctx.agentInterop && block.name === 'create_agent') {
     const inp = block.input as Record<string, string>
-    const sessionType = (inp.session_type === 'claude-code' ? 'claude-code' : 'chat') as SessionType
+    const sessionType = (inp.session_type === 'claude-code' || inp.session_type === 'codex' ? inp.session_type : 'chat') as SessionType
     const result = await ctx.agentInterop.createAgent(inp.name, inp.model, sessionType, inp.cwd)
     if ('error' in result) return `Error: ${result.error}`
-    const typeNote = sessionType === 'claude-code' ? ' [Claude Code terminal]' : ` (model: ${result.model})`
+    const typeNote = sessionType === 'claude-code'
+      ? ' [Claude Code terminal]'
+      : sessionType === 'codex' ? ' [Codex terminal]' : ` (model: ${result.model})`
     return `Created agent "${result.name}" (id: ${result.id}${typeNote}).`
   }
   if (ctx.agentInterop && block.name === 'delete_agent') {

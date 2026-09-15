@@ -13,6 +13,12 @@ const MODELS = [
   'claude-haiku-4-5-20251001',
 ]
 
+const SESSION_TYPES: { type: SessionType; label: string }[] = [
+  { type: 'chat', label: 'Chat' },
+  { type: 'claude-code', label: 'Claude Code' },
+  { type: 'codex', label: 'Codex' },
+]
+
 export default function NewSessionModal({ defaultModel, onConfirm, onClose }: Props) {
   const [model, setModel] = useState(defaultModel)
   const [name, setName] = useState('')
@@ -25,8 +31,10 @@ export default function NewSessionModal({ defaultModel, onConfirm, onClose }: Pr
   }, [])
 
   function handleConfirm() {
-    const effectiveModel = sessionType === 'claude-code' ? 'claude code' : model
-    onConfirm(effectiveModel, name.trim(), sessionType, sessionType === 'claude-code' ? (cwd.trim() || undefined) : undefined)
+    const effectiveModel = sessionType === 'claude-code'
+      ? 'claude code'
+      : sessionType === 'codex' ? 'codex' : model
+    onConfirm(effectiveModel, name.trim(), sessionType, sessionType === 'chat' ? undefined : (cwd.trim() || undefined))
     onClose()
   }
 
@@ -35,7 +43,10 @@ export default function NewSessionModal({ defaultModel, onConfirm, onClose }: Pr
     if (e.key === 'Escape') onClose()
     if (e.key === 'N' && e.ctrlKey && e.shiftKey) {
       e.preventDefault()
-      setSessionType(prev => prev === 'chat' ? 'claude-code' : 'chat')
+      setSessionType(prev => {
+        const index = SESSION_TYPES.findIndex(({ type }) => type === prev)
+        return SESSION_TYPES[(index + 1) % SESSION_TYPES.length].type
+      })
     }
   }
 
@@ -50,7 +61,7 @@ export default function NewSessionModal({ defaultModel, onConfirm, onClose }: Pr
             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 400 }}>Ctrl+Shift+N to toggle</span>
           </span>
           <div style={{ display: 'flex', borderRadius: '5px', border: '1px solid var(--brown-border)', overflow: 'hidden' }}>
-            {(['chat', 'claude-code'] as const).map((type) => (
+            {SESSION_TYPES.map(({ type, label }, index) => (
               <button
                 key={type}
                 type="button"
@@ -60,7 +71,7 @@ export default function NewSessionModal({ defaultModel, onConfirm, onClose }: Pr
                   flex: 1,
                   padding: '7px 10px',
                   border: 'none',
-                  borderRight: type === 'chat' ? '1px solid var(--brown-border)' : 'none',
+                  borderRight: index < SESSION_TYPES.length - 1 ? '1px solid var(--brown-border)' : 'none',
                   background: sessionType === type ? 'var(--brown)' : 'var(--cream)',
                   color: sessionType === type ? 'var(--cream)' : 'var(--brown-light)',
                   fontSize: '0.85rem',
@@ -69,13 +80,13 @@ export default function NewSessionModal({ defaultModel, onConfirm, onClose }: Pr
                   transition: 'background 0.15s, color 0.15s',
                 }}
               >
-                {type === 'chat' ? 'Chat' : 'Claude Code'}
+                {label}
               </button>
             ))}
           </div>
-          {sessionType === 'claude-code' && (
+          {sessionType !== 'chat' && (
             <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400, lineHeight: 1.5 }}>
-              Opens a real Claude Code terminal session via PTY.
+              Opens a real {sessionType === 'codex' ? 'Codex' : 'Claude Code'} terminal session via PTY using your existing local CLI login.
             </span>
           )}
         </label>
@@ -100,7 +111,7 @@ export default function NewSessionModal({ defaultModel, onConfirm, onClose }: Pr
           </label>
         )}
 
-        {sessionType === 'claude-code' && (
+        {sessionType !== 'chat' && (
           <label>
             Working Directory (optional)
             <input

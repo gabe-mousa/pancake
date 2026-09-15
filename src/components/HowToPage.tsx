@@ -14,7 +14,7 @@ export default function HowToPage() {
           </li>
           <li><a href="#session-tiles">Session tiles</a>
             <ul>
-              <li><a href="#claude-code-sessions">Claude Code sessions</a></li>
+              <li><a href="#terminal-agent-sessions">Coding-agent terminals</a></li>
               <li><a href="#interop-badge">AIO badge</a></li>
               <li><a href="#fs-badge">FS access badge</a></li>
               <li><a href="#pfs-lfs-dots">PFS / LFS indicators</a></li>
@@ -32,7 +32,7 @@ export default function HowToPage() {
           <li><a href="#agent-interop">Agent interoperability</a>
             <ul>
               <li><a href="#interop-tools">Agent tools</a></li>
-              <li><a href="#interop-cc-rest">Claude Code AIO (REST)</a></li>
+              <li><a href="#interop-terminal-rest">Terminal AIO (REST)</a></li>
               <li><a href="#interop-toggle">Enabling / disabling</a></li>
               <li><a href="#interop-messages">Injected messages</a></li>
               <li><a href="#interop-delete-confirm">Delete confirmation</a></li>
@@ -53,7 +53,7 @@ export default function HowToPage() {
         <section id="what-is-pancake">
           <h2>What is Pancake?</h2>
           <p>
-            Pancake is a local web app for running multiple Claude AI agent sessions side by side.
+            Pancake is a local web app for running multiple AI agent sessions side by side.
             Each session is an independent conversation with its own history, model, and filesystem access.
             You can run them simultaneously — writing, coding, research, brainstorming — without losing
             context between them. Agents can autonomously read and write files, use the Notepad, and
@@ -65,7 +65,7 @@ export default function HowToPage() {
           <h2>Getting started</h2>
           <ol>
             <li>Click <strong>⚙</strong> (top right) to open Config. Choose an <strong>Auth Mode</strong> — <strong>API Key</strong> or <strong>Cybertron</strong> (see <a href="#authentication">Authentication</a> below) — enter your credentials if required, choose a default model, and click <strong>Save</strong>.</li>
-            <li>Click <strong>+</strong> (bottom right) or press <code>Ctrl+Shift+N</code> to create a new session. Choose a session type — <strong>Chat</strong> for a standard model conversation, or <strong>Claude Code</strong> for a full terminal running the Claude Code CLI. Press <code>Ctrl+Shift+N</code> again while the dialog is open to toggle between types. Give it a name; Chat sessions also let you pick a model, Claude Code sessions let you optionally set a working directory. Press <strong>Enter</strong> or click <strong>Create</strong>.</li>
+            <li>Click <strong>+</strong> (bottom right) or press <code>Ctrl+Shift+N</code> to create a new session. Choose <strong>Chat</strong>, <strong>Claude Code</strong>, or <strong>Codex</strong>. Press <code>Ctrl+Shift+N</code> again while the dialog is open to cycle through the types. Chat sessions let you pick a model; terminal sessions let you optionally set a working directory. Press <strong>Enter</strong> or click <strong>Create</strong>.</li>
             <li>Click a tile to focus it, then type in the chat input and press <strong>Enter</strong> to send.</li>
           </ol>
         </section>
@@ -110,18 +110,18 @@ export default function HowToPage() {
             <li>The grid layout is switchable — see <a href="#layout">Layout modes</a> below.</li>
           </ul>
 
-          <h3 id="claude-code-sessions">Claude Code sessions</h3>
+          <h3 id="terminal-agent-sessions">Claude Code and Codex sessions</h3>
           <p>
-            Claude Code sessions run the local Claude Code CLI (<code>claude</code>) inside a full PTY terminal rendered with xterm.js. The binary is resolved from your <code>PATH</code>, or you can set <code>CLAUDE_PATH</code> to override. They behave like a real terminal tab embedded in the grid.
+            Terminal sessions run the local Claude Code (<code>claude</code>) or Codex (<code>codex</code>) CLI inside a full PTY rendered with xterm.js. Binaries are resolved from your <code>PATH</code>; <code>CLAUDE_PATH</code> and <code>CODEX_PATH</code> can override them. Both inherit Pancake's environment and use the CLI login already configured on your machine.
           </p>
           <ul>
-            <li>Identified by the <strong>≥_</strong> badge in the tile header. The current working directory of the PTY process is displayed in the status bar.</li>
+            <li>Identified by a <strong>CC</strong> or <strong>CX</strong> badge in the tile header. The current working directory of the PTY process is displayed in the status bar.</li>
             <li>All input goes directly to the PTY — type in the terminal just as you would in a dedicated terminal window.</li>
             <li>Pancake hotkeys (navigation, expand, etc.) still work: they are intercepted before reaching the PTY so they do not interfere with the terminal session.</li>
             <li>Click <strong>⊞</strong> or press <code>Ctrl+Shift+F</code> to expand — the terminal resizes automatically to fill the screen.</li>
-            <li>Claude Code sessions have an <strong>AIO badge</strong> and can participate in agent interoperability (see below). Messages sent via <code>send_message_to_agent</code> are injected directly into the terminal as typed input.</li>
-            <li>Claude Code sessions are automatically informed about <strong>AIO REST endpoints</strong> on the Pancake server via a system prompt injection. They can call <code>curl http://127.0.0.1:4174/aio/list-agents</code> (and the other <code>/aio/*</code> endpoints) to list, create, and message other sessions — including spawning new Claude Code sessions.</li>
-            <li>Claude Code sessions do <strong>not</strong> have an FS access badge or PFS/LFS dot indicators — filesystem access is managed by Claude Code itself.</li>
+            <li>Both session types have an <strong>AIO badge</strong>. Messages sent via <code>send_message_to_agent</code> are injected directly into the terminal as typed input.</li>
+            <li>Both CLIs receive <strong>AIO REST endpoint</strong> instructions when they start. They can call <code>curl http://127.0.0.1:4174/aio/list-agents</code> and the other <code>/aio/*</code> endpoints to list, read, create, and message sessions.</li>
+            <li>Terminal sessions do <strong>not</strong> have an FS access badge or PFS/LFS dot indicators — filesystem permissions are managed by the CLI itself.</li>
             <li>Click <strong>✕</strong> to close the tile — this kills the underlying PTY process immediately.</li>
           </ul>
 
@@ -146,7 +146,7 @@ export default function HowToPage() {
             <li><strong>FS: r/w/d</strong> — agent can also permanently delete files (use with care)</li>
           </ul>
           <p>
-            This only affects local filesystem (LFS) access — it has no effect on Pancake's virtual filesystem (PFS). Claude Code session tiles do not show this badge.
+            This only affects local filesystem (LFS) access — it has no effect on Pancake's virtual filesystem (PFS). Terminal agent tiles do not show this badge.
           </p>
 
           <h3 id="pfs-lfs-dots">PFS / LFS session indicators</h3>
@@ -158,7 +158,7 @@ export default function HowToPage() {
             <li><strong>Blue dot (LFS)</strong> — Local Filesystem was enabled when this session was created</li>
           </ul>
           <p>
-            These are read-only indicators. They record what was active at creation time so you always know the intended context of that session. The current FS access level is still controlled by the FS badge. Claude Code session tiles do not show these dots.
+            These are read-only indicators. They record what was active at creation time so you always know the intended context of that session. The current FS access level is still controlled by the FS badge. Terminal agent tiles do not show these dots.
           </p>
         </section>
 
@@ -259,40 +259,40 @@ export default function HowToPage() {
           <p>When agent interop is enabled for a session, five tools become available:</p>
           <ul>
             <li>
-              <code>list_agents</code> — returns a list of all other open sessions with their id, name, model (<code>claude code</code> for Claude Code sessions), session type, status, streaming state, and message count. This is the starting point for any inter-agent workflow: the agent uses the name to identify the right target and the id to call the other tools.
+              <code>list_agents</code> — returns a list of all other open sessions with their id, name, model, session type, status, streaming state, and message count. This is the starting point for any inter-agent workflow: the agent uses the name to identify the right target and the id to call the other tools.
             </li>
             <li>
-              <code>read_agent_chat(agent_id)</code> — returns the full conversation history of another session as an array of <code>{'{role, content}'}</code> messages. For Claude Code sessions, returns a descriptive note instead of a message array (the terminal history is not accessible as structured chat).
+              <code>read_agent_chat(agent_id)</code> — returns the full conversation history of another session as an array of <code>{'{role, content}'}</code> messages. For terminal sessions, returns recent terminal output instead of structured messages.
             </li>
             <li>
-              <code>send_message_to_agent(agent_id, message, await_response?)</code> — injects a user-role message into another session, triggering that agent to respond. By default this is fire-and-forget: the tool returns immediately and both sessions run in parallel. Set <code>await_response: true</code> to block until the target agent finishes responding, then receive its reply text directly in the tool result. For Claude Code sessions, the message is injected directly into the terminal as typed input (as if the user typed it). Cannot send to self or to a session that is currently streaming.
+              <code>send_message_to_agent(agent_id, message, await_response?)</code> — injects a user-role message into another session, triggering that agent to respond. By default this is fire-and-forget: the tool returns immediately and both sessions run in parallel. Set <code>await_response: true</code> to block until a Chat target finishes responding. For terminal sessions, the message is injected directly into the PTY as typed input.
             </li>
             <li>
-              <code>create_agent(name?, model?, session_type?, cwd?)</code> — creates a new session tile in the workspace. <code>name</code> defaults to "Session N" and <code>model</code> defaults to the app's configured default. Set <code>session_type</code> to <code>'claude-code'</code> to spawn a Claude Code terminal session; optionally provide <code>cwd</code> as the working directory for the new terminal. Returns the new session's id, name, and model so the agent can immediately start working with it.
+              <code>create_agent(name?, model?, session_type?, cwd?)</code> — creates a new session tile in the workspace. Set <code>session_type</code> to <code>'claude-code'</code> or <code>'codex'</code> to spawn that terminal CLI; optionally provide <code>cwd</code>. Returns the new session's id, name, and model.
             </li>
             <li>
               <code>delete_agent(agent_id)</code> — closes another session and permanently erases its chat history. Cannot delete self or a currently streaming session. Triggers a confirmation dialog (see below). Cannot be undone.
             </li>
           </ul>
 
-          <h3 id="interop-cc-rest">Claude Code AIO (REST endpoints)</h3>
+          <h3 id="interop-terminal-rest">Terminal agent AIO (REST endpoints)</h3>
           <p>
-            Chat sessions use AIO via tool calls injected into the system prompt. Claude Code sessions cannot use those tools directly, so Pancake exposes equivalent functionality as REST endpoints on the local server. CC sessions are automatically informed about these endpoints when they start (via <code>--append-system-prompt</code>) and can call them with <code>curl</code>.
+            Chat sessions use AIO via tool calls. Terminal sessions use equivalent REST endpoints on the local server. Claude Code receives these instructions through <code>--append-system-prompt</code>; Codex receives them through <code>developer_instructions</code>. Both can call the endpoints with <code>curl</code>.
           </p>
           <ul>
             <li><code>GET /aio/list-agents</code> — returns a JSON array of all sessions with their id, name, model, status, and session type.</li>
-            <li><code>GET /aio/read-agent?agentId=uuid</code> — reads another session's content. For chat sessions, returns the full message history. For Claude Code sessions, returns the recent terminal output (ANSI codes stripped).</li>
-            <li><code>POST /aio/create-agent</code> — creates a new session. Body: <code>{'{"name": "Worker", "sessionType": "claude-code", "cwd": "/path"}'}</code>. Returns the new session's id and name.</li>
-            <li><code>POST /aio/send-message</code> — sends a message to another session. Body: <code>{'{"agentId": "uuid", "message": "text"}'}</code>. For Claude Code targets, the message is injected directly into the PTY and submitted automatically. For Chat targets, it triggers a normal message send.</li>
+            <li><code>GET /aio/read-agent?agentId=uuid</code> — reads another session's content. For chat sessions, returns the full message history. For terminal sessions, returns recent terminal output (ANSI codes stripped).</li>
+            <li><code>POST /aio/create-agent</code> — creates a new session. Body: <code>{'{"name": "Worker", "sessionType": "codex", "cwd": "/path"}'}</code>. Returns the new session's id and name.</li>
+            <li><code>POST /aio/send-message</code> — sends a message to another session. Body: <code>{'{"agentId": "uuid", "message": "text"}'}</code>. For terminal targets, the message is injected directly into the PTY and submitted automatically. For Chat targets, it triggers a normal message send.</li>
           </ul>
           <p>
-            Example from inside a Claude Code session:
+            Example from inside a terminal agent session:
           </p>
           <pre style={{ fontSize: '0.8rem', background: 'var(--cream-dark, #f5ede4)', padding: '8px 12px', borderRadius: '5px', overflowX: 'auto' }}>
             {`curl -s http://127.0.0.1:4174/aio/list-agents | jq
 curl -s -X POST http://127.0.0.1:4174/aio/create-agent \\
   -H 'Content-Type: application/json' \\
-  -d '{"name":"Helper","sessionType":"claude-code"}'`}
+  -d '{"name":"Helper","sessionType":"codex"}'`}
           </pre>
 
           <h3 id="interop-toggle">Enabling / disabling</h3>
@@ -416,7 +416,7 @@ curl -s -X POST http://127.0.0.1:4174/aio/create-agent \\
               <tr><td><code>Shift+Arrow</code></td><td>Select current + adjacent tile, move focus</td></tr>
               <tr><td><code>Shift+F</code></td><td>Clear tile selection</td></tr>
               <tr><td><code>Shift+Ctrl+F</code></td><td>Expand / minimize focused tile</td></tr>
-              <tr><td><code>Ctrl+Shift+N</code></td><td>Open new session dialog (press again to toggle Chat / Claude Code)</td></tr>
+              <tr><td><code>Ctrl+Shift+N</code></td><td>Open new session dialog (press again to cycle Chat / Claude Code / Codex)</td></tr>
               <tr><td><code>Shift+Ctrl+X</code></td><td>Toggle floating Notepad window</td></tr>
               <tr><td><code>Enter</code></td><td>Send message (in chat input)</td></tr>
               <tr><td><code>Esc</code></td><td>Minimize expanded tile / close floating Notepad / close modal</td></tr>

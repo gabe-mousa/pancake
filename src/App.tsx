@@ -8,7 +8,7 @@ import NotepadWindow from './components/NotepadWindow'
 import NotepadPage from './components/NotepadPage'
 import FilesystemPage from './pages/FilesystemPage'
 import { streamMessage } from './anthropic'
-import type { Session, SessionGroup, Config, FsAccess, VirtualFile, AgentMeta, SessionType } from './types'
+import { isTerminalSessionType, type Session, type SessionGroup, type Config, type FsAccess, type VirtualFile, type AgentMeta, type SessionType } from './types'
 
 const DEFAULT_CONFIG: Config = {
   apiKey: '',
@@ -78,6 +78,12 @@ function createSession(model: string, name: string, displayNumber: number, fsAcc
     sessionType,
     ccSessionCwd,
   }
+}
+
+function modelForSessionType(sessionType: SessionType, chatModel: string): string {
+  if (sessionType === 'claude-code') return 'claude code'
+  if (sessionType === 'codex') return 'codex'
+  return chatModel
 }
 
 type Page = 'sessions' | 'how-to' | 'notepad' | 'filesystem' | 'about'
@@ -275,9 +281,9 @@ export default function App() {
           respond(list)
         } else if (msg.operation === 'create_agent') {
           const { name, sessionType, cwd } = msg.params as { name?: string; sessionType?: SessionType; cwd?: string }
-          const st = sessionType ?? 'chat'
+          const st: SessionType = sessionType === 'claude-code' || sessionType === 'codex' ? sessionType : 'chat'
           const displayNumber = sessionsRef.current.length + 1
-          const effectiveModel = st === 'claude-code' ? 'claude code' : configRef.current.defaultModel
+          const effectiveModel = modelForSessionType(st, configRef.current.defaultModel)
           const session = createSession(
             effectiveModel,
             name ?? '',
@@ -295,8 +301,8 @@ export default function App() {
           const target = sessionsRef.current.find(s => s.id === agentId)
           if (!target) {
             respond({ error: `No session with id "${agentId}"` })
-          } else if (target.sessionType === 'claude-code') {
-            respond({ note: 'Claude Code terminal buffer is returned by the server directly.' })
+          } else if (isTerminalSessionType(target.sessionType)) {
+            respond({ note: 'Terminal agent output is returned by the server directly.' })
           } else {
             respond({ sessionType: 'chat', messages: target.messages })
           }
@@ -305,15 +311,21 @@ export default function App() {
           const target = sessionsRef.current.find(s => s.id === agentId)
           if (!target) {
             respond({ error: `No session with id "${agentId}"` })
-          } else if (target.sessionType === 'claude-code') {
-            // CC targets are handled server-side; shouldn't arrive here, but handle gracefully
-            respond({ error: 'Claude Code targets are handled server-side via PTY injection' })
+          } else if (isTerminalSessionType(target.sessionType)) {
+            // Terminal targets are handled server-side; shouldn't arrive here, but handle gracefully
+            respond({ error: 'Terminal agent targets are handled server-side via PTY injection' })
           } else {
             if (doSendRef.current) {
               doSendRef.current(agentId, message as string, 'AIO endpoint')
             }
             respond({ queued: true, agentId, agentName: target.name })
           }
+        } else if (msg.operation === 'get_notepad') {
+          respond({ content: notepadRef.current })
+        } else if (msg.operation === 'set_notepad') {
+          const { content } = msg.params as { content: string }
+          setNotepadContent(content)
+          respond({ ok: true })
         } else {
           respond({ error: `Unknown operation: ${msg.operation}` })
         }
@@ -436,7 +448,7 @@ export default function App() {
     setSessions(prev => [...prev, session])
     setActiveTileIndex(sessions.length)
     // For chat sessions, also focus directly in case activeTileIndex didn't change (e.g. first session)
-    if (sessionType !== 'claude-code') {
+    if (!isTerminalSessionType(sessionType)) {
       setTimeout(() => {
         document.querySelector<HTMLElement>(`[data-session-id="${session.id}"] .chat-input`)?.focus()
       }, 50)
@@ -517,7 +529,7 @@ export default function App() {
       readAgentChat: (agentId) => {
         const s = sessionsRef.current.find(s => s.id === agentId)
         if (!s) return { error: `No session with id "${agentId}"` }
-        if (s.sessionType === 'claude-code') return { note: `"${s.name}" is a Claude Code terminal session. Use send_message_to_agent to inject input into its terminal.` }
+        if (isTerminalSessionType(s.sessionType)) return { note: `"${s.name}" is a terminal agent session. Use send_message_to_agent to inject input into its terminal.` }
         return s.messages
       },
 
@@ -527,8 +539,8 @@ export default function App() {
         if (!target) return { error: `No session with id "${agentId}"` }
         const agentName = target.name
 
-        // Claude Code terminal sessions: type directly into the PTY via server endpoint
-        if (target.sessionType === 'claude-code') {
+        // Terminal agent sessions: type directly into the PTY via server endpoint
+        if (isTerminalSessionType(target.sessionType)) {
           try {
             await fetch('http://127.0.0.1:4174/terminal/type', {
               method: 'POST',
@@ -565,7 +577,7 @@ export default function App() {
 
       createAgent: async (name?, model?, sessionType = 'chat', cwd?) => {
         const displayNumber = sessionsRef.current.length + 1
-        const effectiveModel = sessionType === 'claude-code' ? 'claude code' : (model ?? configRef.current.defaultModel)
+        const effectiveModel = modelForSessionType(sessionType, model ?? configRef.current.defaultModel)
         const session = createSession(
           effectiveModel,
           name ?? '',
@@ -727,7 +739,7 @@ export default function App() {
   useEffect(() => {
     setActiveInputValue('')
     const activeSession = sessionsRef.current[activeTileIndex]
-    if (activeSession && activeSession.sessionType !== 'claude-code') {
+    if (activeSession && !isTerminalSessionType(activeSession.sessionType)) {
       const tile = document.querySelector<HTMLElement>(`[data-session-id="${activeSession.id}"]`)
       tile?.querySelector<HTMLInputElement>('.chat-input')?.focus()
     }
@@ -817,7 +829,7 @@ export default function App() {
 
   const sendMessage = useCallback(async (sessionId: string, text: string) => {
     const targetSession = sessionsRef.current.find(s => s.id === sessionId)
-    if (targetSession?.sessionType === 'claude-code') return
+    if (targetSession && isTerminalSessionType(targetSession.sessionType)) return
     if (configRef.current.authMode !== 'cybertron' && !configRef.current.apiKey) {
       setShowConfig(true)
       return

@@ -3,7 +3,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import ChatWindow from './ChatWindow'
 import TerminalTile from './TerminalTile'
-import type { Session, FsAccess, Hotkeys } from '../types'
+import { isTerminalSessionType, type Session, type FsAccess, type Hotkeys } from '../types'
 
 interface Props {
   session: Session
@@ -82,11 +82,12 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
     setEditingName(false)
   }
 
-  const isCC = session.sessionType === 'claude-code'
+  const terminalSessionType = isTerminalSessionType(session.sessionType) ? session.sessionType : null
+  const isTerminal = terminalSessionType !== null
 
   const tileClass = [
     'tile',
-    isCC ? 'tile-claude-code' : '',
+    isTerminal ? 'tile-terminal' : '',
     expanded ? 'tile-expanded' : '',
     isActive ? 'tile-active' : '',
     isSelected ? 'tile-selected' : '',
@@ -129,7 +130,7 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
           }
           return next
         })
-      } else if (e.key === 'Escape' && expanded && !isCC) {
+      } else if (e.key === 'Escape' && expanded && !isTerminal) {
         e.preventDefault()
         setExpanded(false)
         setTimeout(() => {
@@ -191,8 +192,8 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
             <span className="tile-model-inline">{session.model}</span>
           </span>
         )}
-        {isCC && <span className="tile-cc-badge">≥_</span>}
-        {!isCC && (
+        {isTerminal && <span className="tile-terminal-badge">{session.sessionType === 'codex' ? 'CX' : 'CC'}</span>}
+        {!isTerminal && (
           <div className="tile-fs-indicators">
             {session.pancakeEnabled && (
               <span className="tile-fs-dot tile-fs-dot-pfs" title="Pancake's Filesystem was enabled when this session was created" />
@@ -202,7 +203,7 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
             )}
           </div>
         )}
-        {!isCC && (
+        {!isTerminal && (
           <div className="fs-badge-wrapper" onClick={e => e.stopPropagation()}>
             <button
               className={fsBadgeClass}
@@ -261,14 +262,15 @@ export default function Tile({ session, streamingContent, isActive, isSelected, 
       </div>
       <div className="tile-status">
         {unread && <span className="tile-unread-dot" title="New response" />}
-        {isCC && session.ccSessionCwd
+        {isTerminal && session.ccSessionCwd
           ? <span className="tile-cwd" title={session.ccSessionCwd}>{session.ccSessionCwd}</span>
           : (session.status || 'Idle')
         }
       </div>
-      {isCC ? (
+      {terminalSessionType ? (
         <TerminalTile
           sessionId={session.id}
+          sessionType={terminalSessionType}
           cwd={session.ccSessionCwd}
           expanded={expanded}
           isActive={isActive}

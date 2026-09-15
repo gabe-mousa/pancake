@@ -229,7 +229,7 @@ body {
   font-weight: 700;
   color: var(--brown);
   margin-bottom: 8px;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 .header-help-list {
   margin: 0;
@@ -1994,8 +1994,8 @@ body {
 }
 .fs-tree-action:hover { color: var(--brown); border-color: var(--brown); }
 
-/* Claude Code session tiles */
-.tile-claude-code { height: 320px; }
+/* Terminal agent session tiles */
+.tile-terminal { height: 320px; }
 
 .terminal-window {
   flex: 1;
@@ -2020,8 +2020,8 @@ body {
 .xterm-viewport { overflow-y: hidden !important; }
 .xterm-screen { height: 100%; }
 
-/* CC badge in tile header */
-.tile-cc-badge {
+/* Terminal agent badge in tile header */
+.tile-terminal-badge {
   font-size: 0.65rem;
   font-weight: 700;
   padding: 2px 6px;
